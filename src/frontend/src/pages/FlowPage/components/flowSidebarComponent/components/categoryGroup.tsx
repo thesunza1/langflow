@@ -44,11 +44,12 @@ export const CategoryGroup = memo(function CategoryGroup({
           {Object.entries(dataFilter)
             .filter(
               ([categoryName, items]) =>
-                // filter out bundles and MCP
+                // filter out bundles, MCP, and categories not in curated list
                 !SIDEBAR_BUNDLES.some((cat) => cat.name === categoryName) &&
                 categoryName !== "custom_component" &&
                 categoryName !== "MCP" &&
-                Object.keys(items).length > 0,
+                Object.keys(items).length > 0 &&
+                CATEGORIES.some((cat) => cat.name === categoryName),
             )
             .sort(([aName], [bName]) => {
               const categoryList =
