@@ -106,7 +106,7 @@ class CodexExecComponent(Component):
         cmd = ["codex", "exec"]
         if self.bypass_sandbox:
             cmd.append("--dangerously-bypass-approvals-and-sandbox")
-        cmd += [combined, "--DIR", str(dir_path)]
+        cmd += [combined, "-C", str(dir_path)]
 
         # 5. Execute
         try:
