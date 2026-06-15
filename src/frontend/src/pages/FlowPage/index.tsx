@@ -307,9 +307,8 @@ export default function FlowPage({ view }: { view?: boolean }): JSX.Element {
                 defaultOpen={!isMobile}
                 segmentedSidebar={ENABLE_NEW_SIDEBAR}
               >
-                {/*
-                {/* Assistant Panel — DISABLED for performance */'}
-                {/* <AssistantPanel
+                {/* Assistant Panel — DISABLED for performance 
+                <AssistantPanel
                   isOpen={assistantOpen}
                   onClose={() => setAssistantOpen(false)}
                 /> */}
