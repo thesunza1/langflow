@@ -327,16 +327,16 @@ export const SIDEBAR_CATEGORIES = [
     name: "data_source",
     icon: "Database",
   },
-  {
-    display_name: "sidebar.category.modelsAndAgents",
-    name: "models_and_agents",
-    icon: "Bot",
-  },
-  {
-    display_name: "sidebar.category.llmOperations",
-    name: "llm_operations",
-    icon: "BrainCircuit",
-  },
+  // {
+  //   display_name: "sidebar.category.modelsAndAgents",
+  //   name: "models_and_agents",
+  //   icon: "Bot",
+  // },
+  // {
+  //   display_name: "sidebar.category.llmOperations",
+  //   name: "llm_operations",
+  //   icon: "BrainCircuit",
+  // },
   {
     display_name: ENABLE_KNOWLEDGE_BASES
       ? "sidebar.category.filesAndKnowledge"
@@ -354,17 +354,17 @@ export const SIDEBAR_CATEGORIES = [
     name: "flow_controls",
     icon: "ArrowRightLeft",
   },
-  {
-    display_name: "sidebar.category.utilities",
-    name: "utilities",
-    icon: "Wand2",
-  },
-  {
-    display_name: "sidebar.category.prototypes",
-    name: "prototypes",
-    icon: "FlaskConical",
-  },
-  { display_name: "sidebar.category.tools", name: "tools", icon: "Hammer" },
+  // {
+  //   display_name: "sidebar.category.utilities",
+  //   name: "utilities",
+  //   icon: "Wand2",
+  // },
+  // {
+  //   display_name: "sidebar.category.prototypes",
+  //   name: "prototypes",
+  //   icon: "FlaskConical",
+  // },
+  // { display_name: "sidebar.category.tools", name: "tools", icon: "Hammer" },
   { display_name: "sidebar.category.agents", name: "agents", icon: "Bot" },
   { display_name: "sidebar.category.data", name: "data", icon: "Database" },
   {
