@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>qplan: Ẩn Component Categories trong Sidebar</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; padding: 2rem; line-height: 1.6; }
+  h1 { color: #38bdf8; font-size: 1.8rem; margin-bottom: .5rem; }
+  .meta { color: #94a3b8; margin-bottom: 2rem; font-size: .9rem; }
+  h2 { color: #fbbf24; margin: 2rem 0 1rem; font-size: 1.3rem; border-bottom: 1px solid #334155; padding-bottom: .5rem; }
+  h3 { color: #a78bfa; margin: 1.5rem 0 .5rem; font-size: 1.1rem; }
+  ul, ol { padding-left: 1.5rem; margin: .5rem 0; }
+  li { margin: .25rem 0; }
+  code { background: #1e293b; padding: .15rem .5rem; border-radius: 4px; font-size: .9em; }
+  pre { background: #1e293b; padding: 1rem; border-radius: 8px; overflow-x: auto; margin: .75rem 0; border: 1px solid #334155; }
+  .scope { background: #1e3a5f; border-left: 4px solid #38bdf8; padding: 1rem; border-radius: 0 8px 8px 0; margin: 1rem 0; }
+  .out-of-scope { background: #3b1f1f; border-left: 4px solid #f87171; padding: 1rem; border-radius: 0 8px 8px 0; margin: 1rem 0; }
+  .badge { display: inline-block; background: #334155; padding: .15rem .6rem; border-radius: 12px; font-size: .8rem; margin-right: .25rem; }
+  .wireframe { background: #1e293b; border-radius: 12px; padding: 1.5rem; margin: 1.5rem 0; border: 1px solid #334155; }
+  .wf-sidebar { width: 280px; background: #0f172a; border-radius: 8px; border: 1px solid #334155; }
+  .wf-header { padding: .75rem 1rem; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; }
+  .wf-search { background: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: .5rem .75rem; margin: .75rem 1rem; color: #e2e8f0; width: calc(100% - 2rem); }
+  .wf-toggles { padding: .75rem 1rem; border-bottom: 1px solid #334155; }
+  .wf-toggle-row { display: flex; justify-content: space-between; align-items: center; margin: .4rem 0; }
+  .wf-toggle-row .badge { font-size: .7rem; }
+  .wf-toggle-row .switch { width: 36px; height: 20px; background: #475569; border-radius: 10px; position: relative; }
+  .wf-toggle-row .switch.on { background: #38bdf8; }
+  .wf-toggle-row .switch::after { content: ''; position: absolute; width: 16px; height: 16px; background: #fff; border-radius: 50%; top: 2px; left: 2px; transition: .2s; }
+  .wf-toggle-row .switch.on::after { left: 18px; }
+  .wf-category { padding: .5rem 1rem; border-bottom: 1px solid #1e293b; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+  .wf-category .count { color: #64748b; font-size: .8rem; }
+  .wf-category.hidden { opacity: .4; text-decoration: line-through; }
+  .wf-category .arrow { color: #64748b; }
+  .wf-tag { display: inline-block; padding: .15rem .5rem; border-radius: 4px; font-size: .7rem; margin-left: .5rem; background: #334155; }
+  .wf-tag.legacy { background: #713f12; color: #fbbf24; }
+</style>
+</head>
+<body>
+
+<h1>qplan: Ẩn Component Categories trong Sidebar</h1>
+<p class="meta">Giảm số lượng component hiển thị → giảm render → giảm lag khi kéo thả.</p>
+
+<div class="scope">
+  <strong>In scope:</strong> Chỉ sửa frontend code để filter 5 category khỏi danh sách component sidebar. Không sửa backend, không sửa logic flow, không ảnh hưởng đến component đã có trên canvas.
+</div>
+
+<div class="out-of-scope">
+  <strong>Out of scope:</strong> Xoá component khỏi hệ thống, sửa backend API, thay đổi behavior của flow hiện có, tối ưu các phần khác ngoài sidebar.
+</div>
+
+<h2>1. Phân tích</h2>
+<p>Langflow sidebar hiển thị component categories từ API response. Các categories được render bởi:</p>
+<ul>
+  <li><code>SidebarItemsList</code> trong <code>flowSidebarComponent/index.tsx</code></li>
+  <li>Mỗi category là một group item có thể expand/collapse</li>
+  <li>Component trong mỗi category được render dưới dạng draggable items</li>
+  <li>Càng nhiều component → DOM càng lớn → re-render càng nặng khi kéo thả</li>
+</ul>
+<p>Các categories muốn ẩn:</p>
+<ul>
+  <li><strong>Models & Agents</strong> — nhiều sub-components, chiếm nhiều DOM</li>
+  <li><strong>LLM Operations</strong> — tương tự</li>
+  <li><strong>Utilities</strong> — ít dùng khi kéo flow cơ bản</li>
+  <li><strong>Prototypes</strong> — experimental components</li>
+  <li><strong>Tools</strong> — function-calling tools</li>
+</ul>
+
+<h2>2. Functional Requirements</h2>
+<ol>
+  <li><strong>FR-1:</strong> Cho phép bật/tắt hiển thị từng category riêng lẻ trong sidebar</li>
+  <li><strong>FR-2:</strong> Trạng thái bật/tắt được lưu vào localStorage, giữa các lần reload</li>
+  <li><strong>FR-3:</strong> Categories bị tắt sẽ ẩn hoàn toàn khỏi danh sách (không chỉ collapse)</li>
+  <li><strong>FR-4:</strong> Không ảnh hưởng đến component đã có trên canvas</li>
+  <li><strong>FR-5:</strong> UI toggle nằm gọn trong sidebar, dễ thao tác</li>
+</ol>
+
+<h2>3. Non-functional Requirements</h2>
+<ul>
+  <li><strong>Performance:</strong> Giảm số lượng DOM nodes khi sidebar mở — mục tiêu giảm 40-60% component items</li>
+  <li><strong>UX:</strong> Không cần reload page khi bật/tắt</li>
+  <li><strong>Maintainability:</strong> Dùng cơ chế tương tự <code>showLegacy</code>/<code>showBeta</code> hiện tại</li>
+</ul>
+
+<h2>4. UI Wireframe</h2>
+<div class="wireframe">
+  <div class="wf-sidebar">
+    <div class="wf-header">
+      <span style="font-weight: 600;">Components</span>
+      <span class="badge">v1.0</span>
+    </div>
+    <div class="wf-search" style="color: #64748b;">🔍 Search components...</div>
+    <div class="wf-toggles">
+      <div class="wf-toggle-row">
+        <span><span class="badge" style="background: #a855f7; color: #fff;">Beta</span> Show Beta</span>
+        <div class="switch"></div>
+      </div>
+      <div class="wf-toggle-row">
+        <span><span class="badge" style="background: #64748b; color: #fff;">Legacy</span> Show Legacy</span>
+        <div class="switch"></div>
+      </div>
+      <div style="margin-top: .75rem; padding-top: .75rem; border-top: 1px solid #334155; font-size: .85rem; color: #94a3b8;">
+        <strong>Hide categories</strong>
+      </div>
+      <div class="wf-toggle-row" style="font-size: .9rem;">
+        <span>🤖 Models &amp; Agents</span>
+        <div class="switch on"></div>
+      </div>
+      <div class="wf-toggle-row" style="font-size: .9rem;">
+        <span>⚙️ LLM Operations</span>
+        <div class="switch on"></div>
+      </div>
+      <div class="wf-toggle-row" style="font-size: .9rem;">
+        <span>🔧 Utilities</span>
+        <div class="switch on"></div>
+      </div>
+      <div class="wf-toggle-row" style="font-size: .9rem;">
+        <span>🧪 Prototypes</span>
+        <div class="switch on"></div>
+      </div>
+      <div class="wf-toggle-row" style="font-size: .9rem;">
+        <span>🛠️ Tools</span>
+        <div class="switch on"></div>
+      </div>
+    </div>
+    <div class="wf-category">
+      <span>🤖 Models &amp; Agents <span class="wf-tag legacy">hidden</span></span>
+      <span class="count hidden">0</span>
+    </div>
+    <div class="wf-category">
+      <span>⚙️ LLM Operations <span class="wf-tag legacy">hidden</span></span>
+      <span class="count hidden">0</span>
+    </div>
+    <div class="wf-category">
+      <span>📝 Input / Output</span>
+      <span class="arrow">▸</span>
+    </div>
+    <div class="wf-category">
+      <span>🔄 Processing</span>
+      <span class="arrow">▸</span>
+    </div>
+    <div class="wf-category">
+      <span>🔗 Data Connections</span>
+      <span class="arrow">▸</span>
+    </div>
+  </div>
+  <p style="margin-top: 1rem; color: #94a3b8; font-size: .85rem;">Wireframe: sidebar với toggles "Hide categories" và các category bị ẩn hiển thị mờ + "hidden" tag.</p>
+</div>
+
+<h2>5. Implementation Plan</h2>
+<h3>5.1 File cần sửa</h3>
+<ul>
+  <li><code>src/frontend/src/pages/FlowPage/components/flowSidebarComponent/components/featureTogglesComponent.tsx</code>
+    <br>— Thêm toggles cho từng category</li>
+  <li><code>src/frontend/src/pages/FlowPage/components/flowSidebarComponent/index.tsx</code>
+    <br>— State + filter logic cho hidden categories</li>
+  <li><em>(Có thể tạo helper mới)</em> <code>src/frontend/src/pages/FlowPage/components/flowSidebarComponent/helpers/apply-category-filter.ts</code>
+    <br>— Helper function để lọc categories</li>
+</ul>
+
+<h3>5.2 Flow xử lý</h3>
+<ol>
+  <li>User toggle category OFF trong sidebar</li>
+  <li>Lưu trạng thái vào localStorage (key: <code>hiddenCategories</code>)</li>
+  <li>Sidebar re-render, filter bỏ category khỏi danh sách</li>
+  <li>DOM giảm, re-render nhẹ hơn khi kéo thả</li>
+</ol>
+
+<h3>5.3 Code pattern</h3>
+<pre>
+// featureTogglesComponent.tsx — thêm toggle:
+{
+  label: "Models & Agents",
+  category: "Models & Agents",
+  checked: !hiddenCategories.includes("Models & Agents"),
+  onChange: (v) => toggleCategory("Models & Agents"),
+  testId: "sidebar-hide-models-agents",
+}
+
+// applyHiddenCategoryFilter.ts:
+export const applyHiddenCategoryFilter = (filteredData, hiddenCategories) => {
+  return Object.fromEntries(
+    Object.entries(filteredData)
+      .filter(([category]) => !hiddenCategories.includes(category))
+  );
+};
+
+// index.tsx — trong useMemo dataFilter:
+if (hiddenCategories.length > 0) {
+  filteredData = applyHiddenCategoryFilter(filteredData, hiddenCategories);
+}
+</pre>
+
+<h2>6. Testing</h2>
+<ul>
+  <li>Toggle từng category → verify category biến mất khỏi sidebar</li>
+  <li>Reload page → verify trạng thái được restore từ localStorage</li>
+  <li>Flow có component từ category đã ẩn → verify flow vẫn chạy bình thường</li>
+  <li>Toggle all categories off → verify sidebar chỉ còn search + toggles</li>
+</ul>
+
+<p style="margin-top: 2rem; color: #64748b; font-size: .85rem;">--- End of qplan ---</p>
+</body>
+</html>

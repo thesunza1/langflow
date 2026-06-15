@@ -322,11 +322,11 @@ export const SIDEBAR_CATEGORIES = [
     name: "input_output",
     icon: "Cable",
   },
-  {
-    display_name: "sidebar.category.dataSources",
-    name: "data_source",
-    icon: "Database",
-  },
+  // {
+  //   display_name: "sidebar.category.dataSources",
+  //   name: "data_source",
+  //   icon: "Database",
+  // },
   // {
   //   display_name: "sidebar.category.modelsAndAgents",
   //   name: "models_and_agents",
@@ -337,13 +337,11 @@ export const SIDEBAR_CATEGORIES = [
   //   name: "llm_operations",
   //   icon: "BrainCircuit",
   // },
-  {
-    display_name: ENABLE_KNOWLEDGE_BASES
-      ? "sidebar.category.filesAndKnowledge"
-      : "sidebar.category.files",
-    name: "files_and_knowledge",
-    icon: "Layers",
-  },
+  // {
+  //   display_name: "sidebar.category.filesAndKnowledge",
+  //   name: "files_and_knowledge",
+  //   icon: "Layers",
+  // },
   {
     display_name: "sidebar.category.processing",
     name: "processing",

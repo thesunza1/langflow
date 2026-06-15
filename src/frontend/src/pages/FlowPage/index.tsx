@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { useTranslation } from "react-i18next";
 import { useBlocker, useParams } from "react-router-dom";
-import { AssistantPanel } from "@/components/core/assistantPanel";
+// import { AssistantPanel } from "@/components/core/assistantPanel";
 import { FlowPageSlidingContainerContent } from "@/components/core/playgroundComponent/sliding-container/components/flow-page-sliding-container";
 import { SidebarProvider, useSidebar } from "@/components/ui/sidebar";
 import {
@@ -307,14 +307,13 @@ export default function FlowPage({ view }: { view?: boolean }): JSX.Element {
                 defaultOpen={!isMobile}
                 segmentedSidebar={ENABLE_NEW_SIDEBAR}
               >
-                {/* Assistant Panel — single instance, mounted INSIDE the
-                    SidebarProvider so it can read sidebar open state via
-                    ``useSidebar`` and shift its horizontal position when the
-                    sidebar slides off-canvas. */}
-                <AssistantPanel
+                {/*
+                {/* Assistant Panel — DISABLED for performance */'}
+                {/* <AssistantPanel
                   isOpen={assistantOpen}
                   onClose={() => setAssistantOpen(false)}
-                />
+                /> */}
+
                 <FlowSearchProvider>
                   {/* FlowSidebarComponent - stays in place. Wrapped in a
                       ``display: none`` container while the welcome is open
