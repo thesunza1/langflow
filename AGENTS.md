@@ -238,8 +238,10 @@ yarn start        # Dev server on port 3000 (prompts for 3001 if 3000 is in use)
 
 ## Q Procedures
 
-Four sequential procedures for feature development: **qplan**, **qcode**, **qtest**, **qcommit**.
+Five sequential procedures for feature development: **qplan**, **qcode**, **qtest**, **qcommit**, **qstart**.
 Run them in order. Each expects the previous step to be complete before starting.
+
+Run **qstart** standalone anytime after code changes for a faster production-mode test.
 
 ### qplan — Requirement Planning
 
@@ -337,3 +339,30 @@ Commit all changes to the local git repository with a structured message.
    git add -A && uv run git commit --amend --no-edit
    ```
 6. **Confirm** — Print the commit hash and summary so the user knows what was committed.
+
+### qstart — Production Launch
+
+Start Langflow with the built frontend for better performance (no Vite HMR, no React DevTools warnings). Use this when testing after code changes or when the dev mode is too laggy.
+
+1. **Build frontend** — Compile the production bundle:
+   ```bash
+   make build_frontend
+   ```
+   This runs `npx vite build` and copies the output to `src/backend/base/langflow/frontend/`.
+
+2. **Start production server** — Run Langflow with the built frontend:
+   ```bash
+   uv run langflow run --frontend-path src/backend/base/langflow/frontend --port 7860 --host 0.0.0.0
+   ```
+   
+3. **Verify** — Open http://localhost:7860 (server startup takes ~60s due to backend imports).
+
+4. **Troubleshooting** — If port 7860 is occupied:
+   ```bash
+   lsof -i :7860          # find the PID
+   kill -9 <PID>          # kill the old process
+   ```
+   Or use a different port:
+   ```bash
+   uv run langflow run --frontend-path src/backend/base/langflow/frontend --port 7861 --host 0.0.0.0
+   ```
