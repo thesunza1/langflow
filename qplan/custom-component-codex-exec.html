@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QPlan: Custom Component Codex Exec</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, sans-serif; background: #f5f5f5; color: #1a1a1a; padding: 24px; }
+  .container { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 1.75rem; margin-bottom: 4px; }
+  .meta { color: #666; font-size: 0.9rem; margin-bottom: 24px; }
+  .meta span { display: inline-block; margin-right: 16px; }
+  .section { background: #fff; border-radius: 8px; padding: 20px 24px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  .section h2 { font-size: 1.2rem; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #eee; }
+  .section h3 { font-size: 1rem; margin: 16px 0 8px; color: #333; }
+  ol, ul { padding-left: 20px; }
+  li { margin-bottom: 6px; line-height: 1.5; }
+  .tag { display: inline-block; font-size: 0.75rem; padding: 2px 8px; border-radius: 4px; margin-right: 4px; }
+  .tag-in { background: #dbeafe; color: #1e40af; }
+  .tag-out { background: #dcfce7; color: #166534; }
+  .tag-dir { background: #fef3c7; color: #92400e; }
+  .tag-feat { background: #f3e8ff; color: #6b21a8; }
+  .tag-reg { background: #fce7f3; color: #9d174d; }
+  .table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+  .table th, .table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #eee; font-size: 0.9rem; }
+  .review-pass { background: #dcfce7; color: #166534; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
+  .review-warn { background: #fef3c7; color: #92400e; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
+  .table th { font-weight: 600; background: #fafafa; }
+  .flow-box { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 16px; background: #f9fafb; border-radius: 8px; margin: 12px 0; }
+  .flow-node { background: #fff; border: 2px solid #3b82f6; border-radius: 8px; padding: 10px 16px; text-align: center; min-width: 80px; font-size: 0.85rem; font-weight: 500; }
+  .flow-arrow { color: #9ca3af; font-size: 1.2rem; }
+  .code-block { background: #1a1a2e; color: #e4e4e4; padding: 14px 16px; border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; overflow-x: auto; margin: 12px 0; }
+  .code-block .kw { color: #ff79c6; }
+  .code-block .str { color: #f1fa8c; }
+  .code-block .cm { color: #6272a4; }
+  .wireframe { border: 2px dashed #d1d5db; border-radius: 8px; padding: 20px; margin: 12px 0; background: #fff; }
+  .wf-title { font-weight: 600; margin-bottom: 12px; color: #6b7280; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px; }
+  .wf-component { border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden; }
+  .wf-header { background: #f0f5ff; padding: 10px 14px; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; gap: 8px; }
+  .wf-header .icon { width: 20px; height: 20px; background: #3b82f6; border-radius: 4px; }
+  .wf-header .name { font-weight: 600; font-size: 0.9rem; }
+  .wf-body { padding: 12px 14px; }
+  .wf-input-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 0.85rem; }
+  .wf-input-row .label { min-width: 100px; color: #6b7280; }
+  .wf-input-row .field { flex: 1; border: 1px solid #d1d5db; border-radius: 4px; padding: 6px 10px; background: #f9fafb; font-size: 0.85rem; color: #999; }
+  .wf-input-row .field-dir { flex: 1; border: 1px solid #f59e0b; border-radius: 4px; padding: 6px 10px; background: #fffbeb; font-size: 0.85rem; }
+  .wf-output { border-top: 1px solid #e5e7eb; padding: 10px 14px; display: flex; align-items: center; gap: 10px; font-size: 0.85rem; background: #f0fdf4; }
+  .wf-output .label { color: #166534; font-weight: 500; }
+  .wf-output .value { color: #6b7280; font-style: italic; }
+  .wf-btn { display: inline-block; border: none; border-radius: 4px; padding: 4px 12px; font-size: 0.75rem; cursor: default; }
+  .wf-btn-primary { background: #3b82f6; color: #fff; }
+  .wf-outscope { background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; padding: 12px 14px; margin: 12px 0; font-size: 0.85rem; }
+  .wf-outscope-title { font-weight: 600; color: #991b1b; margin-bottom: 6px; }
+  .wf-step { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
+  .wf-step-num { background: #3b82f6; color: #fff; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 600; flex-shrink: 0; }
+  .wf-step-body { flex: 1; }
+  .wf-step-title { font-weight: 600; font-size: 0.9rem; margin-bottom: 2px; }
+  .wf-step-desc { font-size: 0.85rem; color: #6b7280; }
+  .hl { background: #fef9c3; padding: 1px 4px; border-radius: 2px; font-weight: 500; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>Codex Exec Custom Component</h1>
+<div class="meta">
+  <span>📅 2026-06-15</span>
+  <span>📌 qplan</span>
+  <span>👤 Agent</span>
+</div>
+
+<!-- ============ REFERENCE PATTERN ============ -->
+<div class="section">
+<h2>0. Reference Pattern (PythonREPLComponent)</h2>
+<p>Component mẫu tham khảo: <code>src/lfx/src/lfx/components/utilities/python_repl_core.py</code></p>
+<ul>
+  <li>Kế thừa <code>Component</code> từ <code>lfx.custom.custom_component.component</code></li>
+  <li>Dùng <code>StrInput</code>, <code>MultilineInput</code> cho inputs</li>
+  <li>Dùng <code>Output</code> với <code>method</code> trỏ tới function xử lý</li>
+  <li>Output trả về <code>Data</code></li>
+</ul>
+</div>
+
+<!-- ============ SRS ============ -->
+<div class="section">
+<h2>1. Software Requirements Specification</h2>
+
+<h3>1.1 Purpose</h3>
+<p>Custom component <strong>Codex Exec</strong> cho phép nhập nhiều đoạn text + đường dẫn thư mục, ghép text lại, và chạy lệnh <code>codex exec --dangerously-bypass-approvals-and-sandbox "&lt;text&gt;" --DIR &lt;dir&gt;</code>. Kết quả trả về làm output.</p>
+
+<h3>1.2 Functional Requirements</h3>
+<ol>
+  <li><strong>FR-1:</strong> <strong>MultilineInput</strong> — mỗi dòng là 1 prompt, user có thể thêm/xoá dòng tự do mà không giới hạn số lượng.</li>
+  <li><strong>FR-2:</strong> <strong>1 directory input</strong> — đường dẫn thư mục làm việc.</li>
+  <li><strong>FR-3:</strong> <strong>1 output</strong> — trả về kết quả từ lệnh dạng Message/Data.</li>
+  <li><strong>FR-4:</strong> Ghép các text inputs bằng dấu cách: <code>"input1 input2 input3 ..."</code>.</li>
+  <li><strong>FR-5:</strong> Chạy lệnh: <code>codex exec [--dangerously-bypass-approvals-and-sandbox] "&lt;text&gt;" --DIR &lt;dir&gt;</code> — flag bypass sandbox là optional (boolean input, mặc định OFF).</li>
+  <li><strong>FR-6:</strong> Capture stdout + stderr, trả về kết quả gộp.</li>
+  <li><strong>FR-7:</strong> Bắt lỗi: directory không tồn tại, lệnh thất bại, timeout.</li>
+</ol>
+
+<h3>1.3 Non-functional Requirements</h3>
+<ul>
+  <li>Dùng <code>subprocess.run</code> với <code>shell=False</code>, <code>capture_output=True</code>, <code>text=True</code> (theo pattern có sẵn trong codebase).</li>
+  <li>Check <code>codex</code> có trên PATH trước khi chạy.</li>
+  <li>Validate directory path tồn tại.</li>
+  <li>Timeout 6000s mặc định, configurable.</li>
+  <li>Output trả về <code>Data</code> thay vì <code>Message</code> để đồng bộ với các component mẫu (PythonREPLComponent).</li>
+  <li>Flag <code>--dangerously-bypass-approvals-and-sandbox</code> được điều khiển bằng boolean input, mặc định <strong>OFF</strong>.</li>
+  <li>Output bị truncate ở 100k ký tự để tránh UI overload.</li>
+  <li>Set <code>self.status</code> ở mọi nhánh (thành công, lỗi, timeout) để UI hiển thị trạng thái.</li>
+  <li>Dùng <code>self.log()</code> để ghi log khi có lỗi.</li>
+  <li>Tuân thủ đúng pattern component: class → inputs → outputs → method.</li>
+</ul>
+</div>
+
+<!-- ============ USER FLOW ============ -->
+<div class="section">
+<h2>2. User Flow (Canvas)</h2>
+
+<div class="wf-step">
+  <div class="wf-step-num">1</div>
+  <div class="wf-step-body">
+    <div class="wf-step-title">Kéo component từ sidebar</div>
+    <div class="wf-step-desc">Vào <span class="hl">Components → Helpers</span> (hoặc category chỉ định), kéo <strong>Codex Exec</strong> vào canvas.</div>
+  </div>
+</div>
+
+<div class="wf-step">
+  <div class="wf-step-num">2</div>
+  <div class="wf-step-body">
+    <div class="wf-step-title">Nhập inputs</div>
+    <div class="wf-step-desc">Điền text vào ô Prompts (mỗi dòng là 1 prompt) và đường dẫn thư mục vào ô Directory.</div>
+  </div>
+</div>
+
+<div class="wf-step">
+  <div class="wf-step-num">3</div>
+  <div class="wf-step-body">
+    <div class="wf-step-title">Kết nối output</div>
+    <div class="wf-step-desc">Nối output <strong>Result</strong> với Chat Output hoặc component khác.</div>
+  </div>
+</div>
+
+<div class="wf-step">
+  <div class="wf-step-num">4</div>
+  <div class="wf-step-body">
+    <div class="wf-step-title">Save & Run</div>
+    <div class="wf-step-desc">Lưu flow → bấm <strong>Play</strong> → component ghép text → chạy <code>codex exec</code> → trả kết quả.</div>
+  </div>
+</div>
+
+<div class="flow-box">
+  <div class="flow-node" style="border-color:#6b7280;">Chat Input</div>
+  <span class="flow-arrow">→</span>
+  <div class="flow-node" style="border-color:#3b82f6;">Codex Exec</div>
+  <span class="flow-arrow">→</span>
+  <div class="flow-node" style="border-color:#6b7280;">Chat Output</div>
+</div>
+</div>
+
+<!-- ============ WIREFRAME ============ -->
+<div class="section">
+<h2>3. Wireframe</h2>
+<div class="wireframe">
+  <div class="wf-title">📐 Langflow Canvas — "Codex Exec" Component</div>
+  <div class="wf-component">
+    <div class="wf-header">
+      <div class="icon"></div>
+      <span class="name">Codex Exec</span>
+      <span style="font-size:0.75rem;color:#6b7280;margin-left:auto;">Helpers</span>
+    </div>
+    <div class="wf-body">
+      <div style="font-size:0.8rem;color:#6b7280;margin-bottom:10px;">Execute commands via Codex CLI from multiple text inputs.</div>
+      <div style="font-size:0.75rem;color:#3b82f6;margin-bottom:10px;background:#eff6ff;padding:6px 10px;border-radius:4px;">
+        🔗 Dùng MultilineInput — mỗi dòng là 1 prompt, tự do thêm/xoá. Có input_types=["Message"] để kéo từ node khác.
+      </div>
+
+      <div class="wf-input-row" style="align-items:flex-start;">
+        <span class="label"><span class="tag tag-in">Input</span> Prompts *</span>
+        <span class="field" style="min-height:60px;white-space:pre-line;">Thêm tính năng A cho trang login
+Sửa style button B
+Kiểm tra lỗi C</span>
+      </div>
+      <div class="wf-input-row">
+        <span class="label"><span class="tag tag-dir">Dir</span> Directory *</span>
+        <span class="field-dir">/path/to/workspace</span>
+      </div>
+      <details style="margin-top:8px;font-size:0.8rem;">
+        <summary style="cursor:default;color:#6b7280;">Advanced</summary>
+        <div class="wf-input-row" style="margin-top:6px;">
+          <span class="label">⏱️ Timeout (s)</span>
+          <span class="field" style="background:#fff;max-width:80px;">6000</span>
+        </div>
+        <div class="wf-input-row" style="margin-top:6px;">
+          <span class="label"><span class="tag tag-dir">⚠️</span> Bypass Sandbox</span>
+          <span class="field" style="background:#fef2f2;max-width:40px;text-align:center;">OFF</span>
+        </div>
+      </details>
+    </div>
+    <div class="wf-output">
+      <span class="label"><span class="tag tag-out">Output</span> Result</span>
+      <span class="value">→ stdout/stderr từ Codex CLI</span>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ============ FILES ============ -->
+<div class="section">
+<h2>4. Files &amp; Registration</h2>
+
+<h3>4.1 File Structure</h3>
+<div class="code-block">
+<pre>src/lfx/src/lfx/components/codex_exec/
+├── __init__.py       <span class="cm"># _dynamic_imports, __all__, __getattr__</span>
+└── codex_exec.py     <span class="cm"># CodexExecComponent class</span></pre>
+</div>
+
+<h3>4.2 Parent Registration</h3>
+<p>Thêm vào <code>src/lfx/src/lfx/components/__init__.py</code> (3 chỗ):</p>
+<div class="code-block">
+<pre><span class="cm"># 1. TYPE_CHECKING imports (khoảng dòng 38)</span>
+<span class="kw">if</span> TYPE_CHECKING:
+    <span class="kw">from</span> lfx.components <span class="kw">import</span> (
+        ...
+        codex_exec,
+        ...
+    )
+
+<span class="cm"># 2. _dynamic_imports (khoảng dòng 160)</span>
+_dynamic_imports = {
+    ...
+    <span class="str">"codex_exec"</span>: <span class="str">"__module__"</span>,
+    ...
+}
+
+<span class="cm"># 3. __all__ (khoảng dòng 270)</span>
+__all__ = [
+    ...
+    <span class="str">"codex_exec"</span>,
+    ...
+]</pre>
+</div>
+
+<h3>4.3 Module Init (codex_exec/__init__.py)</h3>
+<div class="code-block">
+<pre><span class="kw">from</span> __future__ <span class="kw">import</span> annotations
+
+<span class="kw">from</span> typing <span class="kw">import</span> TYPE_CHECKING, Any
+
+<span class="kw">from</span> lfx.components._importing <span class="kw">import</span> import_mod
+
+<span class="kw">if</span> TYPE_CHECKING:
+    <span class="kw">from</span> .codex_exec <span class="kw">import</span> CodexExecComponent
+
+_dynamic_imports = {
+    <span class="str">"CodexExecComponent"</span>: <span class="str">"codex_exec"</span>,
+}
+
+__all__ = [<span class="str">"CodexExecComponent"</span>]
+
+<span class="kw">def</span> __getattr__(attr_name: str) -> Any:
+    <span class="kw">if</span> attr_name <span class="kw">not</span> <span class="kw">in</span> _dynamic_imports:
+        msg = <span class="str">f"module '{__name__}' has no attribute '{attr_name}'"</span>
+        <span class="kw">raise</span> AttributeError(msg)
+    result = import_mod(attr_name, _dynamic_imports[attr_name], __spec__.parent)
+    globals()[attr_name] = result
+    <span class="kw">return</span> result
+
+<span class="kw">def</span> __dir__() -> list[str]:
+    <span class="kw">return</span> list(__all__)</pre>
+</div>
+</div>
+
+<!-- ============ COMPONENT CODE DESIGN ============ -->
+<div class="section">
+<h2>5. Component Design</h2>
+<div class="code-block">
+<pre><span class="kw">from</span> lfx.custom.custom_component.component <span class="kw">import</span> Component
+<span class="kw">from</span> lfx.io <span class="kw">import</span> MessageTextInput, StrInput, Output
+<span class="kw">from</span> lfx.schema.message <span class="kw">import</span> Message
+<span class="kw">import</span> subprocess
+<span class="kw">import</span> shutil
+<span class="kw">from</span> pathlib <span class="kw">import</span> Path
+
+<span class="kw">from</span> __future__ <span class="kw">import</span> annotations
+
+<span class="kw">from</span> lfx.custom.custom_component.component <span class="kw">import</span> Component
+<span class="kw">from</span> lfx.io <span class="kw">import</span> BoolInput, MessageTextInput, MultilineInput, Output
+<span class="kw">from</span> lfx.schema.data <span class="kw">import</span> Data
+<span class="kw">import</span> subprocess
+<span class="kw">import</span> shutil
+<span class="kw">from</span> pathlib <span class="kw">import</span> Path
+
+<span class="kw">class</span> <span class="hl">CodexExecComponent</span>(Component):
+    display_name = <span class="str">"Codex Exec"</span>
+    description = <span class="str">"Combine multiple text inputs and execute via Codex CLI."</span>
+    documentation = <span class="str">""</span>
+    icon = <span class="str">"terminal"</span>
+    name = <span class="str">"CodexExec"</span>
+
+    inputs = [
+        <span class="cm"># MultilineInput: mỗi dòng là 1 prompt, user có thể thêm/xoá dòng tự do</span>
+        <span class="cm"># input_types=["Message"] cho phép kéo kết nối từ node khác vào</span>
+        MultilineInput(
+            name=<span class="str">"prompts"</span>,
+            display_name=<span class="str">"Prompts"</span>,
+            info=<span class="str">"Each line is one prompt. Chúng sẽ được ghép lại với nhau bằng dấu cách. Có thể kéo từ node khác vào."</span>,
+            value=<span class="str">"Prompt 1\nPrompt 2"</span>,
+            required=<span class="kw">True</span>,
+        ),
+        MessageTextInput(
+            name=<span class="str">"directory"</span>,
+            display_name=<span class="str">"Directory"</span>,
+            info=<span class="str">"Working directory for Codex CLI. Path must exist."</span>,
+            required=<span class="kw">True</span>,
+        ),
+        BoolInput(
+            name=<span class="str">"bypass_sandbox"</span>,
+            display_name=<span class="str">"⚠️ Bypass Sandbox"</span>,
+            info=<span class="str">"⚠️ DANGER: Bypasses Codex approval &amp; sandbox. Only enable if you trust the prompts. Disabled by default."</span>,
+            value=<span class="kw">False</span>,
+            advanced=<span class="kw">True</span>,
+        ),
+        MessageTextInput(
+            name=<span class="str">"timeout"</span>,
+            display_name=<span class="str">"Timeout (s)"</span>,
+            value=<span class="str">"6000"</span>,
+            advanced=<span class="kw">True</span>,
+        ),
+    ]
+
+    outputs = [
+        Output(display_name=<span class="str">"Result"</span>, name=<span class="str">"result"</span>, method=<span class="str">"execute"</span>),
+    ]
+
+    <span class="kw">def</span> execute(self) -> Data:
+        self.status = <span class="str">"Running..."</span>
+
+        <span class="cm"># 1. Ghép text — mỗi dòng trong MultilineInput là 1 prompt</span>
+        prompts = [p.strip() <span class="kw">for</span> p <span class="kw">in</span> self.prompts.split(<span class="str">"\n"</span>) <span class="kw">if</span> p.strip()]
+        <span class="kw">if</span> <span class="kw">not</span> prompts:
+            self.status = <span class="str">"Error: no prompts"</span>
+            <span class="kw">return</span> Data(data={<span class="str">"error"</span>: <span class="str">"At least one prompt is required."</span>})
+
+        combined = <span class="str">" "</span>.join(prompts)
+
+        <span class="cm"># 2. Validate directory — resolve path để tránh path traversal</span>
+        <span class="kw">try</span>:
+            dir_path = Path(self.directory).resolve()
+            <span class="kw">if</span> <span class="kw">not</span> dir_path.is_dir():
+                self.status = <span class="str">"Error: directory not found"</span>
+                <span class="kw">return</span> Data(data={<span class="str">"error"</span>: <span class="str">f"Directory '{self.directory}' not found."</span>})
+        <span class="kw">except</span> Exception <span class="kw">as</span> e:
+            self.status = <span class="str">"Error: invalid path"</span>
+            <span class="kw">return</span> Data(data={<span class="str">"error"</span>: <span class="str">f"Invalid directory path: {e!s}"</span>})
+
+        <span class="cm"># 3. Check codex CLI</span>
+        codex_path = shutil.which(<span class="str">"codex"</span>)
+        <span class="kw">if</span> <span class="kw">not</span> codex_path:
+            self.status = <span class="str">"Error: codex not found"</span>
+            <span class="kw">return</span> Data(data={<span class="str">"error"</span>: <span class="str">"'codex' command not found on PATH."</span>})
+
+        <span class="cm"># 4. Build command</span>
+        cmd = [<span class="str">"codex"</span>, <span class="str">"exec"</span>]
+        <span class="kw">if</span> self.bypass_sandbox:
+            cmd.append(<span class="str">"--dangerously-bypass-approvals-and-sandbox"</span>)
+        cmd += [combined, <span class="str">"--DIR"</span>, str(dir_path)]
+
+        <span class="cm"># 5. Run</span>
+        <span class="kw">try</span>:
+            self.log(<span class="str">f"Running: {' '.join(cmd[:3])}..."</span>)
+            result = subprocess.run(
+                cmd,
+                capture_output=<span class="kw">True</span>,
+                text=<span class="kw">True</span>,
+                timeout=<span class="hl">int(self.timeout)</span>,
+                shell=<span class="kw">False</span>,
+            )
+            <span class="cm"># Tách stdout/stderr riêng</span>
+            output = result.stdout.strip()
+            <span class="kw">if</span> result.stderr.strip():
+                output += <span class="str">"\n\n[STDERR]\n"</span> + result.stderr.strip()
+            <span class="cm"># Truncate nếu quá dài</span>
+            max_len = 100000
+            <span class="kw">if</span> len(output) &gt; max_len:
+                output = output[:max_len] + <span class="str">"\n\n... [Output truncated]"</span>
+            self.status = <span class="str">f"Done (exit code {result.returncode})"</span>
+            <span class="kw">return</span> Data(data={<span class="str">"result"</span>: output})
+        <span class="kw">except</span> subprocess.TimeoutExpired:
+            self.status = <span class="str">"Error: timeout"</span>
+            <span class="kw">return</span> Data(data={<span class="str">"error"</span>: <span class="str">f"Command timed out after {self.timeout}s."</span>})
+        <span class="kw">except</span> Exception <span class="kw">as</span> e:
+            self.log(<span class="str">f"Execution error: {e!s}"</span>)
+            self.status = <span class="str">"Error"</span>
+            <span class="kw">return</span> Data(data={<span class="str">"error"</span>: <span class="str">f"Execution error: {e!s}"</span>})</pre>
+</div>
+</div>
+
+<!-- ============ SCOPE ============ -->
+<div class="section">
+<h2>6. Scope Boundary</h2>
+<table class="table">
+  <tr><th>In Scope</th><th>Out of Scope</th></tr>
+  <tr>
+    <td>
+      <span class="tag tag-feat">FR-1</span> Tạo file component <code>codex_exec.py</code><br>
+      <span class="tag tag-feat">FR-2</span> Tạo <code>__init__.py</code> trong <code>codex_exec/</code><br>
+      <span class="tag tag-reg">REG</span> Đăng ký module trong <code>components/__init__.py</code><br>
+      <span class="tag tag-feat">FR-3</span> Chạy backend để load component<br>
+      <span class="tag tag-feat">FR-4</span> Kéo thả + test trên canvas<br>
+      <span class="tag tag-feat">FR-5</span> Lưu flow + run component
+    </td>
+    <td>
+      ✗ Sửa component khác<br>
+      ✗ Thay đổi frontend<br>
+      ✗ Thêm API route mới<br>
+      ✗ Sửa database/auth/permission<br>
+      ✗ Support Windows
+    </td>
+  </tr>
+</table>
+</div>
+
+<!-- ============ TEST PLAN ============ -->
+<div class="section">
+<h2>7. Test Plan</h2>
+<ol>
+  <li><strong>Load test:</strong> Chạy <code>LFX_DEV=1 make backend</code> → component xuất hiện trong sidebar.</li>
+  <li><strong>Canvas test:</strong> Kéo component vào canvas → inputs/outputs hiển thị đúng.</li>
+  <li><strong>Input test:</strong> Nhập multi-line prompts vào ô Prompts, mỗi dòng là 1 prompt riêng.</li>
+  <li><strong>Run test:</strong> Kết nối Chat Input → Codex Exec → Chat Output → Play.</li>
+  <li><strong>Error test:</strong> Directory không tồn tại → báo lỗi; codex không có trên PATH → báo lỗi.</li>
+  <li><strong>Save &amp; reload:</strong> Lưu flow → refresh → mở lại → component vẫn hoạt động.</li>
+</ol>
+</div>
+
+
+<!-- ============ REVIEW ============ -->
+<div class="section">
+<h2>8. Multi-Perspective Review</h2>
+<p style="font-size:0.85rem;color:#6b7280;margin-bottom:12px;">Review từ 3 góc nhìn: Backend/Architecture, Security/DevOps, UX/Product.</p>
+
+<!-- --- REVIEW 1: BACKEND --- -->
+<h3>8.1 🔧 Backend &amp; Architecture Review</h3>
+<table class="table">
+  <tr><th>#</th><th>Finding</th><th>Severity</th><th>Action</th></tr>
+  <tr>
+    <td>1</td>
+    <td><strong>Thiếu `from __future__ import annotations`</strong> — tất cả component đều có dòng này ở đầu file.</td>
+    <td><span class="review-warn">MED</span></td>
+    <td>Thêm vào đầu <code>codex_exec.py</code>.</td>
+  </tr>
+  <tr>
+    <td>2</td>
+    <td><strong>Output type là `Message`</strong> — các component mẫu (PythonREPLComponent) dùng `Data` chứ không dùng `Message` trực tiếp. Dùng `Message` vẫn được nhưng cần kiểm tra handle output.</td>
+    <td><span class="review-warn">MED</span></td>
+    <td>Đổi output method trả về `Data` cho đồng bộ, hoặc giữ `Message` nếu test thấy handle hoạt động.</td>
+  </tr>
+  <tr>
+    <td>3</td>
+    <td><strong>Module init thiếu `from __future__ import annotations`</strong>.</td>
+    <td><span class="review-warn">LOW</span></td>
+    <td>Thêm vào đầu <code>__init__.py</code>.</td>
+  </tr>
+  <tr>
+    <td>4</td>
+    <td><strong>Không xử lý prompts rỗng</strong> — nếu connected node trả về empty string.</td>
+    <td><span class="review-warn">LOW</span></td>
+    <td>Filter empty prompts sau khi strip().</td>
+  </tr>
+  <tr>
+    <td>5</td>
+    <td><strong>Thiếu `documentation` field</strong> — các component khác đều có.</td>
+    <td><span class="review-warn">LOW</span></td>
+    <td>Thêm <code>documentation = ""</code>.</td>
+  </tr>
+  <tr>
+    <td>6</td>
+    <td><strong>Import `StrInput` không dùng</strong>.</td>
+    <td><span class="review-pass">OK</span></td>
+    <td>Bỏ khỏi imports.</td>
+  </tr>
+  <tr>
+    <td>7</td>
+    <td><strong>Category của component chưa xác định</strong> — cần biết nó nằm ở group nào trong sidebar.</td>
+    <td><span class="review-warn">MED</span></td>
+    <td>Kiểm tra xem category được xác định bởi folder name hay field riêng.</td>
+  </tr>
+</table>
+
+<!-- --- REVIEW 2: SECURITY --- -->
+<h3>8.2 🛡️ Security &amp; DevOps Review</h3>
+<table class="table">
+  <tr><th>#</th><th>Finding</th><th>Severity</th><th>Action</th></tr>
+  <tr>
+    <td>1</td>
+    <td><strong>Flag `--dangerously-bypass-approvals-and-sandbox` hardcoded</strong> — đây là flag nguy hiểm, bypass toàn bộ sandbox của Codex.</td>
+    <td><span class="review-warn">HIGH</span></td>
+    <td>Thêm boolean input để user chủ động bật/tắt, kèm cảnh báo trong <code>info</code>.</td>
+  </tr>
+  <tr>
+    <td>2</td>
+    <td><strong>Directory path injection</strong> — user input trực tiếp thành <code>--DIR &lt;path&gt;</code>.</td>
+    <td><span class="review-warn">MED</span></td>
+    <td>Dùng <code>Path(self.directory).resolve()</code>, validate path tồn tại, kiểm tra absolute.</td>
+  </tr>
+  <tr>
+    <td>3</td>
+    <td><strong>Shell injection</strong> — dù dùng <code>shell=False</code> an toàn, text input vẫn có ký tự đặc biệt.</td>
+    <td><span class="review-warn">MED</span></td>
+    <td><code>shell=False</code> với list args là đủ an toàn. Ghi chú cho user.</td>
+  </tr>
+  <tr>
+    <td>4</td>
+    <td><strong>stderr gộp với stdout</strong> — user khó phân biệt error vs output.</td>
+    <td><span class="review-warn">LOW</span></td>
+    <td>Tách riêng, append error message nếu có lỗi.</td>
+  </tr>
+  <tr>
+    <td>5</td>
+    <td><strong>Không log output khi lỗi</strong> — khó debug.</td>
+    <td><span class="review-warn">LOW</span></td>
+    <td>Thêm <code>self.log()</code> ghi stderr khi fail.</td>
+  </tr>
+  <tr>
+    <td>6</td>
+    <td><strong>Không check `codex` version</strong>.</td>
+    <td><span class="review-warn">LOW</span></td>
+    <td>Ghi minimum version requirement trong doc.</td>
+  </tr>
+</table>
+
+<!-- --- REVIEW 3: UX --- -->
+<h3>8.3 🎨 UX &amp; Product Review</h3>
+<table class="table">
+  <tr><th>#</th><th>Finding</th><th>Severity</th><th>Action</th></tr>
+  <tr>
+    <td>1</td>
+    <td><strong>Không có dynamic add input</strong> — FR-1 yêu cầu "2 hoặc nhiều input" nhưng design chỉ fixed 4 input.</td>
+    <td><span class="review-warn">MED</span></td>
+    <td>Dùng MultilineInput (mỗi line = 1 prompt) hoặc TableInput để user thêm dòng linh hoạt.</td>
+  </tr>
+  <tr>
+    <td>2</td>
+    <td><strong>Thiếu placeholder text</strong> — các input nên có <code>info</code> để hướng dẫn user.</td>
+    <td><span class="review-warn">MED</span></td>
+    <td>Thêm <code>info="..."</code> vào mỗi MessageTextInput.</td>
+  </tr>
+  <tr>
+    <td>3</td>
+    <td><strong>Thiếu progress indicator</strong> — user không biết component đang chạy hay treo.</td>
+    <td><span class="review-warn">MED</span></td>
+    <td>Set <code>self.status = "Running..."</code> trước exec, <code>"Done"</code> sau.</td>
+  </tr>
+  <tr>
+    <td>4</td>
+    <td><strong>Output raw text có thể rất dài</strong> — gây overload UI.</td>
+    <td><span class="review-warn">LOW</span></td>
+    <td>Truncate output ở 100k ký tự.</td>
+  </tr>
+  <tr>
+    <td>5</td>
+    <td><strong>Không có cách test component trước khi dùng thật</strong>.</td>
+    <td><span class="review-warn">LOW</span></td>
+    <td>Thêm test case với input mẫu trong Test Plan.</td>
+  </tr>
+</table>
+
+</div>
+
+</div>
+</body>
+</html>

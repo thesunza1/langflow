@@ -235,3 +235,105 @@ cd docs
 yarn install
 yarn start        # Dev server on port 3000 (prompts for 3001 if 3000 is in use)
 ```
+
+## Q Procedures
+
+Four sequential procedures for feature development: **qplan**, **qcode**, **qtest**, **qcommit**.
+Run them in order. Each expects the previous step to be complete before starting.
+
+### qplan — Requirement Planning
+
+Translate user requests into a structured plan saved as HTML files under `qplan/`.
+
+1. **Analyze** — Read the user's request and break it down into clear functional requirements.
+2. **Write SRS** — Create a Software Requirements Specification in HTML format covering:
+   - Purpose and scope
+   - Functional requirements (numbered, detailed)
+   - Non-functional requirements (performance, security, UX)
+   - User interaction flow
+   - Component tree / page structure
+3. **Create wireframe** — Embed an interactive or visual wireframe in the same HTML (CSS-drawn mockup or inline SVG schematic showing layout, major UI elements, and navigation flow).
+4. **Save** — Write the file to `qplan/<feature-name>.html`. Create `qplan/` directory if it doesn't exist.
+5. **Scope boundary** — Clearly mark what is in scope and what is out of scope. Do not modify, refactor, or touch any feature or functionality not directly related to the requirements defined in this plan.
+
+6. **Confirm** — Present the plan to the user for approval before moving to qcode.
+
+The HTML should be self-contained (no external dependencies) so it can be opened in any browser.
+
+**Mở file plan:** Dùng lệnh sau trong terminal để mở file HTML trong browser:
+
+
+### qcode — Implementation
+
+Implement the feature following the approved qplan.
+
+1. **Read plan** — Load the SRS and wireframe from `qplan/<feature-name>.html`.
+2. **Scope** — Identify which files need to be created or modified (backend, frontend, tests).
+3. **Implement** — Write code following the existing project conventions:
+   - Backend: FastAPI routes in `src/backend/base/langflow/api/`, services in `services/`, components in `components/`.
+   - Frontend: React components in `src/frontend/src/components/`, stores in `stores/`, pages in `pages/`.
+   - Follow the patterns described in Component Development and Frontend Development sections above.
+4. **Integrate** — If the feature touches both backend and frontend, wire up API calls using the existing Axios + TanStack React Query pattern (see `frontend-query-mutation` skill).
+5. **Verify build** — Run the relevant format/lint checks:
+   ```bash
+   make format_backend   # if backend changed
+   make format_frontend  # if frontend changed
+   ```
+6. **Commit readiness** — Do not commit yet; that is qcommit's job.
+
+### qtest — GUI Testing
+
+Test the implemented feature through its user interface.
+
+1. **Start the app** — Ensure Langflow is running (see Common Commands / Development Setup).
+2. **Manual smoke test** — Walk through the feature's UI flow:
+   - Navigate to the feature's page/component.
+   - Execute the primary happy-path scenario.
+   - Test at least one edge case or error state.
+3. **Automated test** — If applicable, write or update tests:
+   - **Playwright E2E tests** in `src/frontend/tests/` for UI flows.
+   - **Jest unit tests** in `src/frontend/src/` for component logic.
+   - **pytest** in `src/backend/tests/` for backend logic.
+   - Run the new tests and confirm they pass:
+     ```bash
+     # Frontend E2E (Playwright)
+     cd src/frontend && npx playwright test --project=chromium
+     # Frontend unit (Jest)
+     make test_frontend
+     # Backend unit
+     make unit_tests
+     ```
+4. **Report** — Summarize what was tested and the results. If issues are found, either fix them immediately or file them for iteration.
+
+### qcommit — Local Commit
+
+Commit all changes to the local git repository with a structured message.
+
+1. **Stage changes** — Add all new and modified files:
+   ```bash
+   git add -A
+   ```
+2. **Review diff** — Sanity-check what is being committed:
+   ```bash
+   git diff --cached --stat
+   ```
+3. **Write commit message** — Follow [semantic commit conventions](https://www.conventionalcommits.org/):
+   ```
+   <type>(<scope>): <short summary>
+
+   <body (optional)>
+
+   Closes #<issue> (if applicable)
+   ```
+   Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`.
+   Scope examples: `backend`, `frontend`, `lfx`, `authz`, `components`.
+4. **Commit**:
+   ```bash
+   uv run git commit
+   ```
+   (The `uv run` ensures pre-commit hooks find the correct Python environment.)
+5. **Post-commit** — If pre-commit hooks reformat any files, stage and commit again:
+   ```bash
+   git add -A && uv run git commit --amend --no-edit
+   ```
+6. **Confirm** — Print the commit hash and summary so the user knows what was committed.
