@@ -68,7 +68,9 @@ export function ParameterRenderComponent({
     templateData.type +
     "_" +
     (editNode ? "edit_" : "") +
-    templateData.name
+    templateData.name +
+    "_" +
+    nodeId
   ).toLowerCase();
 
   const renderComponent = (): React.ReactElement<InputProps> => {

@@ -1,6 +1,6 @@
 import { PopoverAnchor } from "@radix-ui/react-popover";
 import { X } from "lucide-react";
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useId, useMemo, useState } from "react";
 import ForwardedIconComponent from "@/components/common/genericIconComponent";
 import ShadTooltip from "@/components/common/shadTooltipComponent";
 import { Badge } from "@/components/ui/badge";
@@ -198,6 +198,7 @@ const CustomInputPopover = ({
   inspectionPanel,
 }) => {
   const [isFocused, setIsFocused] = useState(false);
+  const htmlId = useId() + "-" + id;
   const memoizedOptions = useMemo(() => new Set<string>(options), [options]);
 
   const PopoverContentInput =
@@ -304,7 +305,7 @@ const CustomInputPopover = ({
               autoComplete="off"
               onFocus={() => setIsFocused(true)}
               autoFocus={autoFocus}
-              id={id}
+              id={htmlId}
               ref={refInput}
               type={!pwdVisible && password ? "password" : "text"}
               {...imeInputProps}

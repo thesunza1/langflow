@@ -1,5 +1,5 @@
 import * as Form from "@radix-ui/react-form";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import ForwardedIconComponent from "@/components/common/genericIconComponent";
 import { Input } from "@/components/ui/input";
 import { ICON_STROKE_WIDTH } from "@/constants/constants";
@@ -51,6 +51,7 @@ function FormInputBranch({
   id,
 }: FormInputBranchProps) {
   const [cursor, setCursor] = useState<number | null>(null);
+  const htmlId = useId() + "-" + id;
 
   const commitValue = useCallback(
     (newValue: string) => {
@@ -89,7 +90,7 @@ function FormInputBranch({
     <Form.Control asChild>
       <Input
         name={name}
-        id={"form-" + id}
+        id={htmlId}
         ref={refInput}
         autoFocus={autoFocus}
         type={password && !pwdVisible ? "password" : "text"}

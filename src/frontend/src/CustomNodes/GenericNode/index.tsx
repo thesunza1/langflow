@@ -720,4 +720,11 @@ function GenericNode({
   );
 }
 
-export default memo(GenericNode);
+function arePropsEqual(
+  prev: { data: NodeDataType; selected?: boolean },
+  next: { data: NodeDataType; selected?: boolean },
+): boolean {
+  return prev.data === next.data && prev.selected === next.selected;
+}
+
+export default memo(GenericNode, arePropsEqual);

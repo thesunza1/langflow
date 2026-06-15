@@ -67,7 +67,6 @@ export default function Dropdown({
   const [openDialog, setOpenDialog] = useState(false);
   const [_waitingForResponse, setWaitingForResponse] = useState(false);
   const [customValue, setCustomValue] = useState("");
-  const _nodes = useFlowStore((state) => state.nodes);
   const isBuilding = useFlowStore((state) => state.isBuilding);
   const buildInfo = useFlowStore((state) => state.buildInfo);
   const showingBuildPanel =

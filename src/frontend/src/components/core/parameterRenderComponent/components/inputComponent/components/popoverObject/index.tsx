@@ -1,5 +1,5 @@
 import { PopoverAnchor } from "@radix-ui/react-popover";
-import { useEffect } from "react";
+import { useEffect, useId } from "react";
 import ForwardedIconComponent from "@/components/common/genericIconComponent";
 import {
   Command,
@@ -43,6 +43,7 @@ const CustomInputPopoverObject = ({
   showOptions,
   inspectionPanel,
 }) => {
+  const htmlId = useId() + "-" + id;
   const PopoverContentInput =
     editNode || inspectionPanel ? PopoverContent : PopoverContentWithoutPortal;
 
@@ -86,7 +87,7 @@ const CustomInputPopoverObject = ({
     <Popover modal open={showOptions} onOpenChange={setShowOptions}>
       <PopoverAnchor>
         <Input
-          id={id}
+          id={htmlId}
           ref={refInput}
           type="text"
           {...(isSelectionMode ? {} : imeInputProps)}
