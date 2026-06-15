@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QPlan: Ẩn các UI Elements trên Flow Page</title>
+<style>
+  body { font-family: 'Inter', sans-serif; background: #f5f5f5; max-width: 900px; margin: 0 auto; padding: 2rem; color: #222; }
+  h1 { font-size: 1.5rem; border-bottom: 2px solid #333; padding-bottom: 0.5rem; }
+  h2 { font-size: 1.2rem; margin-top: 2rem; }
+  .scope { background: #e8f5e9; padding: 1rem; border-radius: 8px; }
+  .out-scope { background: #fbe9e7; padding: 1rem; border-radius: 8px; }
+  .card { background: white; padding: 1rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin: 1rem 0; }
+  pre { background: #f0f0f0; padding: 0.5rem; border-radius: 4px; overflow-x: auto; }
+  .wireframe { background: white; border: 1px solid #ddd; border-radius: 8px; padding: 1rem; margin: 1rem 0; display: flex; flex-direction: column; gap: 4px; }
+  .wf-header { height: 48px; background: #e0e0e0; border-radius: 4px; display: flex; align-items: center; padding: 0 8px; position: relative; }
+  .wf-header .title-area { position: absolute; left: 12px; background: #ccc; width: 200px; height: 24px; border-radius: 4px; }
+  .wf-sidebar { width: 64px; background: #e8e8e8; border-radius: 4px; height: 300px; display: flex; flex-direction: column; align-items: center; padding: 8px 0; gap: 12px; }
+  .wf-sidebar .btn { width: 40px; height: 40px; background: #d0d0d0; border-radius: 8px; }
+  .wf-canvas { flex: 1; background: #fafafa; border-radius: 4px; position: relative; }
+  .wf-panel { position: absolute; top: 8px; right: 8px; background: #ddd; border-radius: 6px; padding: 8px 16px; display: flex; gap: 8px; }
+  .wf-panel .btn { background: #ccc; width: 60px; height: 28px; border-radius: 4px; }
+  .wf-body { display: flex; gap: 4px; margin-top: 4px; }
+  .strikethrough { text-decoration: line-through; color: #999; }
+  .tag { display: inline-block; background: #e3f2fd; padding: 2px 8px; border-radius: 12px; font-size: 0.8rem; margin: 2px; }
+  .tag-remove { background: #ffcdd2; }
+  .step { background: #fff3e0; padding: 0.8rem; border-radius: 8px; margin: 0.5rem 0; border-left: 4px solid #ff9800; }
+  .step-gitnexus { background: #e8f5e9; padding: 0.8rem; border-radius: 8px; margin: 0.5rem 0; border-left: 4px solid #4caf50; }
+  code { background: #f0f0f0; padding: 1px 4px; border-radius: 3px; font-size: 0.9rem; }
+</style>
+</head>
+<body>
+
+<h1>QPlan: Ẩn UI Elements trên Flow Page</h1>
+
+<p><strong>Mục đích:</strong> Ẩn các thành phần giao diện không cần thiết trên trang flow editor của Langflow để có không gian làm việc tối giản hơn.</p>
+
+<h2>Quy trình thực hiện</h2>
+
+<div class="step-gitnexus">
+  <strong>Bước 1 — GitNexus Analysis:</strong> Sử dụng GitNexus MCP để phân tích codebase trước khi lập plan:
+  <ul>
+    <li>Đọc <code>gitnexus://setup</code> — lấy tổng quan repo (71,020 symbols, 134,588 relationships, 300 execution flows)</li>
+    <li>Đọc <code>gitnexus://repo/langflow/context</code> — stats, tools available, cluster/process resources</li>
+    <li>Đọc <code>gitnexus://repo/langflow/clusters</code> — xác định các functional areas liên quan (Ui, Components, Services)</li>
+    <li>Dùng gitnexus resources để xác định chính xác file paths, symbols, và process flows trước khi viết SRS</li>
+  </ul>
+</div>
+
+<div class="step">
+  <strong>Bước 2 — Analyze:</strong> Dùng thông tin từ GitNexus để xác định chính xác các components, file paths, và dependencies.
+</div>
+<div class="step">
+  <strong>Bước 3 — Write SRS + Wireframe:</strong> Lập tài liệu yêu cầu và wireframe.
+</div>
+<div class="step">
+  <strong>Bước 4 — Lưu file plan:</strong> Ghi vào <code>qplan/&lt;feature-name&gt;.html</code>.
+</div>
+<div class="step">
+  <strong>Bước 5 — Scope boundary:</strong> Đánh dấu in-scope / out-of-scope.
+</div>
+<div class="step">
+  <strong>Bước 6 — Confirm:</strong> Trình plan cho user phê duyệt trước khi chuyển sang qcode.
+</div>
+
+<h2>Functional Requirements</h2>
+
+<div class="card">
+  <h3>FR1: Ẩn Top-Right Panel (Playground + Share + Deploy)</h3>
+  <p><strong>Vị trí:</strong> Góc phải trên của ReactFlow canvas — panel chứa các nút "Playground", "Publish", "Deploy".</p>
+  <p><strong>Component:</strong> <code>FlowToolbar</code> → <code>Panel position="top-right"</code> trong <code>src/frontend/src/components/core/flowToolbarComponent/index.tsx</code></p>
+  <p><strong>GitNexus target:</strong> FlowToolbar symbol, processes: "render_flow_toolbar", cluster: Ui</p>
+  <p><strong>CSS Target:</strong> Panel với className chứa <code>!top-auto !m-2</code> trong <code>#react-flow-id</code></p>
+  <p><span class="tag tag-remove">ẨN</span></p>
+</div>
+
+<div class="card">
+  <h3>FR2: Ẩn Header Title Area</h3>
+  <p><strong>Vị trí:</strong> Thanh header trên cùng (48px), phần hiển thị tên flow / breadcrumb bên trái.</p>
+  <p><strong>Component:</strong> <code>appHeaderComponent/index.tsx</code> → div chứa tên flow</p>
+  <p><strong>GitNexus target:</strong> appHeaderComponent symbol, cluster: Ui</p>
+  <p><strong>CSS Target:</strong> Phần tử <code>div.hidden.pr-2.whitespace-nowrap.lg\\:inline-flex.lg\\:items-center</code> trong header bar</p>
+  <p><span class="tag tag-remove">ẨN</span></p>
+</div>
+
+<div class="card">
+  <h3>FR3: Ẩn MCP và Bundles Sidebar Buttons</h3>
+  <p><strong>Vị trí:</strong> Sidebar bên trái — các nút điều hướng MCP và Bundles.</p>
+  <p><strong>Component:</strong> <code>MemoizedSidebarTrigger</code> → <code>NAV_ITEMS</code> map trong <code>src/frontend/src/pages/FlowPage/components/PageComponent/MemoizedComponents.tsx</code></p>
+  <p><strong>GitNexus target:</strong> NAV_ITEMS, sidebar-nav-mcp, sidebar-nav-bundles symbols</p>
+  <p><strong>CSS Target:</strong> <code>button[data-testid="sidebar-nav-mcp"]</code> và <code>button[data-testid="sidebar-nav-bundles"]</code></p>
+  <p><span class="tag tag-remove">ẨN</span></p>
+</div>
+
+<h2>Non-functional Requirements</h2>
+<ul>
+  <li><strong>NFR1:</strong> Các thay đổi chỉ ảnh hưởng đến CSS, không làm thay đổi logic component.</li>
+  <li><strong>NFR2:</strong> Các element bị ẩn hoàn toàn (display:none), không chiếm không gian layout.</li>
+  <li><strong>NFR3:</strong> Các element vẫn còn trong DOM (không bị xoá), có thể dễ dàng khôi phục.</li>
+</ul>
+
+<h2>Wireframe</h2>
+<div class="wireframe">
+  <div class="wf-header">
+    <div class="title-area strike">Tên Flow (ẨN)</div>
+  </div>
+  <div class="wf-body">
+    <div class="wf-sidebar">
+      <div class="btn"></div>
+      <div class="btn strike"></div>
+      <div class="btn strike"></div>
+      <div class="btn"></div>
+    </div>
+    <div class="wf-canvas">
+      <div class="wf-panel strike">
+        <div class="btn">Playground</div>
+        <div class="btn">Share</div>
+        <div class="btn">Deploy</div>
+      </div>
+    </div>
+  </div>
+</div>
+<p style="text-align:center;font-size:0.9rem;color:#666;">Các phần tử bị gạch ngang (<span class="strike">như thế này</span>) sẽ bị ẩn</p>
+
+<h2>Scope</h2>
+<div class="scope">
+  <strong>In Scope:</strong>
+  <ul>
+    <li>Dùng GitNexus để phân tích codebase trước khi lập plan</li>
+    <li>CSS rules để ẩn 3 nhóm element trên flow editor page</li>
+    <li>Chỉ sửa CSS, không sửa logic component</li>
+    <li>Áp dụng cho mọi flow (global)</li>
+  </ul>
+</div>
+<div class="out-scope">
+  <strong>Out of Scope:</strong>
+  <ul>
+    <li>Không xoá component code</li>
+    <li>Không thêm tính năng toggle để hiện/ẩn</li>
+    <li>Không ảnh hưởng đến các page khác (chỉ flow page)</li>
+  </ul>
+</div>
+
+</body>
+</html>

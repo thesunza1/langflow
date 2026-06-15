@@ -245,24 +245,28 @@ Run **qstart** standalone anytime after code changes for a faster production-mod
 
 ### qplan — Requirement Planning
 
-Translate user requests into a structured plan saved as HTML files under `qplan/`.
+Translate user requests into a structured plan saved as HTML files under `qplan/`. Before drafting the plan, use **gitnexus** to analyze the existing codebase so the plan is grounded in the actual architecture:
 
-1. **Analyze** — Read the user's request and break it down into clear functional requirements.
-2. **Write SRS** — Create a Software Requirements Specification in HTML format covering:
+1. **Codebase analysis** — Query gitnexus for relevant context:
+   - Read `gitnexus://repo/langflow/context` for codebase stats and entry points.
+   - Read `gitnexus://repo/langflow/clusters` to identify relevant modules (e.g. `auth`, `api`, `components`, `frontend`).
+   - Deep-dive into specific clusters via `gitnexus://repo/langflow/cluster/{name}` to understand existing implementations, data models, and service boundaries.
+
+2. **Analyze** — Read the user's request and break it down into clear functional requirements.
+3. **Write SRS** — Create a Software Requirements Specification in HTML format covering:
    - Purpose and scope
    - Functional requirements (numbered, detailed)
    - Non-functional requirements (performance, security, UX)
    - User interaction flow
    - Component tree / page structure
-3. **Create wireframe** — Embed an interactive or visual wireframe in the same HTML (CSS-drawn mockup or inline SVG schematic showing layout, major UI elements, and navigation flow).
-4. **Save** — Write the file to `qplan/<feature-name>.html`. Create `qplan/` directory if it doesn't exist.
-5. **Scope boundary** — Clearly mark what is in scope and what is out of scope. Do not modify, refactor, or touch any feature or functionality not directly related to the requirements defined in this plan.
+4. **Create wireframe** — Embed an interactive or visual wireframe in the same HTML (CSS-drawn mockup or inline SVG schematic showing layout, major UI elements, and navigation flow).
+5. **Save** — Write the file to `qplan/<feature-name>.html`. Create `qplan/` directory if it doesn't exist.
+6. **Scope boundary** — Clearly mark what is in scope and what is out of scope. Do not modify, refactor, or touch any feature or functionality not directly related to the requirements defined in this plan.
 
-6. **Confirm** — Present the plan to the user for approval before moving to qcode.
+7. **Confirm** — Present the plan to the user for approval before moving to qcode.
 
 The HTML should be self-contained (no external dependencies) so it can be opened in any browser.
 
-**Mở file plan:** Dùng lệnh sau trong terminal để mở file HTML trong browser:
 
 
 ### qcode — Implementation
