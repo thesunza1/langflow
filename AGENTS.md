@@ -370,3 +370,8 @@ Start Langflow with the built frontend for better performance (no Vite HMR, no R
    ```bash
    uv run langflow run --frontend-path src/backend/base/langflow/frontend --port 7861 --host 0.0.0.0
    ```
+
+## Response Reminder
+
+At the end of every answer, append the phrase: (còn nhớ AGENTS.md)
+This reminds both the user and the agent to refer back to this document for context.
