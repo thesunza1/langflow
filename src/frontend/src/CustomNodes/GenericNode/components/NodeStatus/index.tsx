@@ -26,6 +26,8 @@ import { classNames, cn } from "@/utils/utils";
 import IconComponent from "../../../../components/common/genericIconComponent";
 import BuildStatusDisplay from "./components/build-status-display";
 import { normalizeTimeString } from "./utils/format-run-time";
+import RunModeModal from "@/modals/runModeModal";
+import { findNearestBuiltUpstream } from "@/utils/buildUtils";
 
 const POLLING_TIMEOUT = 21000;
 const POLLING_INTERVAL = 3000;
@@ -67,6 +69,8 @@ export default function NodeStatus({
   const [validationStatus, setValidationStatus] =
     useState<VertexBuildTypeAPI | null>(null);
   const [isPolling, setIsPolling] = useState(false);
+  const [runModalOpen, setRunModalOpen] = useState(false);
+  const [nearestBuiltNode, setNearestBuiltNode] = useState<string | null>(null);
 
   const nodeAuth = Object.values(data.node?.template ?? {}).find(
     (value) => value.type === "auth",
@@ -102,6 +106,8 @@ export default function NodeStatus({
   const eventDeliveryConfig = useUtilityStore((state) => state.eventDelivery);
   const setErrorData = useAlertStore((state) => state.setErrorData);
   const setFlowPool = useFlowStore((state) => state.setFlowPool);
+  const edges = useFlowStore((state) => state.edges);
+  const flowBuildStatus = useFlowStore((state) => state.flowBuildStatus);
 
   const postTemplateValue = usePostTemplateValue({
     parameterId: nodeAuth?.name ?? "auth",
@@ -303,11 +309,42 @@ export default function NodeStatus({
       return;
     }
     if (buildStatus === BuildStatus.BUILDING || isBuilding) return;
+
+    // Check if there are built upstream nodes to offer run mode selection
+    const nearestUpstream = findNearestBuiltUpstream(
+      nodeId,
+      edges,
+      flowBuildStatus,
+    );
+    if (nearestUpstream) {
+      setNearestBuiltNode(nearestUpstream);
+      setRunModalOpen(true);
+      return;
+    }
+
     buildFlow({
       stopNodeId: nodeId,
       eventDelivery: eventDeliveryConfig,
     });
     track("Flow Build - Clicked", { stopNodeId: nodeId });
+  };
+
+  const handleRunFromNearest = () => {
+    // stopNodeId = nodeId: runs upstream (using cache for built nodes),
+    // stops at this component. This is what the normal Run button does.
+    buildFlow({
+      stopNodeId: nodeId,
+      eventDelivery: eventDeliveryConfig,
+    });
+    track("Flow Build - Run Stopping Here", { stopNodeId: nodeId });
+  };
+
+  const handleRunFromStart = () => {
+    buildFlow({
+      stopNodeId: nodeId,
+      eventDelivery: eventDeliveryConfig,
+    });
+    track("Flow Build - Run From Start", { stopNodeId: nodeId });
   };
 
   const iconName =
@@ -393,146 +430,166 @@ export default function NodeStatus({
     return `button_disconnected_${display_name.toLowerCase()}`;
   };
 
-  return (
-    <div className="flex shrink-0 items-center gap-2">
-      {(showNodeStatus || nodeAuth) && (
-        <div className="flex items-center gap-2 self-center">
-          {showNodeStatus && (
-            <ShadTooltip
-              styleClasses={cn(
-                "border rounded-xl p-2",
-                conditionSuccess
-                  ? "bg-hard-zinc"
-                  : "border-destructive bg-error-background",
-              )}
-              content={
-                <BuildStatusDisplay
-                  buildStatus={buildStatus}
-                  validationStatus={validationStatus}
-                  validationString={validationString}
-                  lastRunTime={lastRunTime}
-                />
-              }
-              side="bottom"
-            >
-              <div className="cursor-help">
-                {conditionSuccess && validationStatus?.data?.duration ? (
-                  <div
-                    className="flex items-center gap-1 rounded-sm px-1 font-mono text-xs text-accent-emerald-foreground transition-colors hover:bg-accent-emerald"
-                    data-testid={`node_duration_` + display_name.toLowerCase()}
-                  >
-                    {validationStatus?.data?.token_usage && (
-                      <span
-                        className="flex items-center gap-1"
-                        data-testid={`node-token-count-${display_name.toLowerCase()}`}
-                      >
-                        <IconComponent
-                          name="Coins"
-                          className="h-3 w-3 text-muted-foreground"
-                          strokeWidth={ICON_STROKE_WIDTH}
-                        />
-                        <span>
-                          {formatTokenCount(
-                            validationStatus.data.token_usage.total_tokens,
-                          )}
-                        </span>
-                        <span className="text-muted-foreground">|</span>
-                      </span>
-                    )}
-                    <span>
-                      {normalizeTimeString(validationStatus?.data?.duration)}
-                    </span>
-                  </div>
-                ) : (
-                  <div
-                    data-testid={
-                      `node_status_icon_` +
-                      display_name.toLowerCase() +
-                      `_` +
-                      buildStatus?.toLowerCase()
-                    }
-                    className="flex items-center self-center"
-                  >
-                    {iconStatus}
-                  </div>
-                )}
-              </div>
-            </ShadTooltip>
-          )}
+  const nearestBuiltNodeName = nearestBuiltNode
+    ? flowBuildStatus[nearestBuiltNode]?.status === "BUILT"
+      ? edges.find((e) => e.source === nearestBuiltNode)?.target
+        ? display_name
+        : display_name
+      : undefined
+    : undefined;
 
-          {nodeAuth && showNode && (
-            <ShadTooltip content={nodeAuth.auth_tooltip || "Connect"}>
-              <div>
-                <Button
-                  unstyled
-                  disabled={
-                    (connectionLink === "" &&
-                      (!apiKeyValue || apiKeyValue === "COMPOSIO_API_KEY")) ||
-                    connectionLink === "error"
-                  }
-                  className={getConnectionButtonClasses(
-                    connectionLink,
-                    isAuthenticated,
-                    isPolling,
-                  )}
-                  onClick={handleClickConnect}
-                  data-testid={getDataTestId()}
-                >
-                  <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-                    <IconComponent
-                      name={
-                        isPolling
-                          ? "Loader2"
-                          : isAuthenticated
-                            ? "Link"
-                            : "AlertTriangle"
+  return (
+    <>
+      <div className="flex shrink-0 items-center gap-2">
+        {(showNodeStatus || nodeAuth) && (
+          <div className="flex items-center gap-2 self-center">
+            {showNodeStatus && (
+              <ShadTooltip
+                styleClasses={cn(
+                  "border rounded-xl p-2",
+                  conditionSuccess
+                    ? "bg-hard-zinc"
+                    : "border-destructive bg-error-background",
+                )}
+                content={
+                  <BuildStatusDisplay
+                    buildStatus={buildStatus}
+                    validationStatus={validationStatus}
+                    validationString={validationString}
+                    lastRunTime={lastRunTime}
+                  />
+                }
+                side="bottom"
+              >
+                <div className="cursor-help">
+                  {conditionSuccess && validationStatus?.data?.duration ? (
+                    <div
+                      className="flex items-center gap-1 rounded-sm px-1 font-mono text-xs text-accent-emerald-foreground transition-colors hover:bg-accent-emerald"
+                      data-testid={
+                        `node_duration_` + display_name.toLowerCase()
                       }
-                      className={getConnectionIconClasses(
-                        connectionLink,
-                        isAuthenticated,
-                        isPolling,
+                    >
+                      {validationStatus?.data?.token_usage && (
+                        <span
+                          className="flex items-center gap-1"
+                          data-testid={`node-token-count-${display_name.toLowerCase()}`}
+                        >
+                          <IconComponent
+                            name="Coins"
+                            className="h-3 w-3 text-muted-foreground"
+                            strokeWidth={ICON_STROKE_WIDTH}
+                          />
+                          <span>
+                            {formatTokenCount(
+                              validationStatus.data.token_usage.total_tokens,
+                            )}
+                          </span>
+                          <span className="text-muted-foreground">|</span>
+                        </span>
                       )}
-                      strokeWidth={ICON_STROKE_WIDTH}
-                    />
-                  </div>
-                  <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-                    <IconComponent
-                      name={"Unlink"}
-                      className={cn(
-                        "h-2.5 w-2.5 text-accent-amber-foreground opacity-0 transition-opacity",
-                        isAuthenticated && !isPolling
-                          ? "group-hover:opacity-100"
-                          : "",
-                      )}
-                      strokeWidth={ICON_STROKE_WIDTH}
-                    />
-                  </div>
-                </Button>
-              </div>
-            </ShadTooltip>
-          )}
-        </div>
-      )}
-      {showNode && (
-        <ShadTooltip content={getTooltipContent()}>
-          <div
-            onMouseEnter={() => setIsHovered(true)}
-            onMouseLeave={() => setIsHovered(false)}
-            onClick={handleClickRun}
-            className="-m-0.5"
-          >
-            <Button unstyled className="nodrag button-run-bg group">
-              <div data-testid={`button_run_` + display_name.toLowerCase()}>
-                <IconComponent
-                  name={iconName}
-                  className={iconClasses}
-                  strokeWidth={ICON_STROKE_WIDTH}
-                />
-              </div>
-            </Button>
+                      <span>
+                        {normalizeTimeString(validationStatus?.data?.duration)}
+                      </span>
+                    </div>
+                  ) : (
+                    <div
+                      data-testid={
+                        `node_status_icon_` +
+                        display_name.toLowerCase() +
+                        `_` +
+                        buildStatus?.toLowerCase()
+                      }
+                      className="flex items-center self-center"
+                    >
+                      {iconStatus}
+                    </div>
+                  )}
+                </div>
+              </ShadTooltip>
+            )}
+
+            {nodeAuth && showNode && (
+              <ShadTooltip content={nodeAuth.auth_tooltip || "Connect"}>
+                <div>
+                  <Button
+                    unstyled
+                    disabled={
+                      (connectionLink === "" &&
+                        (!apiKeyValue || apiKeyValue === "COMPOSIO_API_KEY")) ||
+                      connectionLink === "error"
+                    }
+                    className={getConnectionButtonClasses(
+                      connectionLink,
+                      isAuthenticated,
+                      isPolling,
+                    )}
+                    onClick={handleClickConnect}
+                    data-testid={getDataTestId()}
+                  >
+                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+                      <IconComponent
+                        name={
+                          isPolling
+                            ? "Loader2"
+                            : isAuthenticated
+                              ? "Link"
+                              : "AlertTriangle"
+                        }
+                        className={getConnectionIconClasses(
+                          connectionLink,
+                          isAuthenticated,
+                          isPolling,
+                        )}
+                        strokeWidth={ICON_STROKE_WIDTH}
+                      />
+                    </div>
+                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+                      <IconComponent
+                        name={"Unlink"}
+                        className={cn(
+                          "h-2.5 w-2.5 text-accent-amber-foreground opacity-0 transition-opacity",
+                          isAuthenticated && !isPolling
+                            ? "group-hover:opacity-100"
+                            : "",
+                        )}
+                        strokeWidth={ICON_STROKE_WIDTH}
+                      />
+                    </div>
+                  </Button>
+                </div>
+              </ShadTooltip>
+            )}
           </div>
-        </ShadTooltip>
-      )}
-    </div>
+        )}
+        {showNode && (
+          <ShadTooltip content={getTooltipContent()}>
+            <div
+              onMouseEnter={() => setIsHovered(true)}
+              onMouseLeave={() => setIsHovered(false)}
+              onClick={handleClickRun}
+              className="-m-0.5"
+            >
+              <Button unstyled className="nodrag button-run-bg group">
+                <div data-testid={`button_run_` + display_name.toLowerCase()}>
+                  <IconComponent
+                    name={iconName}
+                    className={iconClasses}
+                    strokeWidth={ICON_STROKE_WIDTH}
+                  />
+                </div>
+              </Button>
+            </div>
+          </ShadTooltip>
+        )}
+      </div>
+      <RunModeModal
+        open={runModalOpen}
+        onOpenChange={setRunModalOpen}
+        nodeName={display_name}
+        nearestBuiltNodeName={nearestBuiltNode || undefined}
+        onRunFromNearest={handleRunFromNearest}
+        onRunFromStart={handleRunFromStart}
+      />
+    </>
   );
 }

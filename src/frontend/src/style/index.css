@@ -505,7 +505,12 @@
 }
 
 /* FR2: Ẩn Header Title Area (tên flow) */
-#root > div > div.flex.h-screen.w-full.flex-col.overflow-hidden > div.z-10.flex.h-\[48px\].w-full.items-center.justify-between.border-b.pr-5.pl-2\.5.dark\:bg-background > div.relative.left-3.z-30.flex.shrink-0.items-center.gap-3 > div.hidden.pr-2.whitespace-nowrap.lg\:inline-flex.lg\:items-center {
+#root
+  > div
+  > div.flex.h-screen.w-full.flex-col.overflow-hidden
+  > div.z-10.flex.h-\[48px\].w-full.items-center.justify-between.border-b.pr-5.pl-2\.5.dark\:bg-background
+  > div.relative.left-3.z-30.flex.shrink-0.items-center.gap-3
+  > div.hidden.pr-2.whitespace-nowrap.lg\:inline-flex.lg\:items-center {
   display: none !important;
 }
 

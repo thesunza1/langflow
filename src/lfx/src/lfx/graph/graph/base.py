@@ -1655,7 +1655,33 @@ class Graph:
             # because they need to iterate through their data
             is_loop_component = vertex.display_name == "Loop" or vertex.is_loop
             if not vertex.frozen or is_loop_component:
+                # Even non-frozen vertices can skip build if cache is available.
+                # This allows incremental runs: start from a downstream node with
+                # upstream results already cached.
                 should_build = True
+                if get_cache is not None:
+                    cached_result = await get_cache(key=vertex.id)
+                    if not isinstance(cached_result, CacheMiss):
+                        try:
+                            cached_vertex_dict = cached_result["result"]
+                            vertex.built = cached_vertex_dict["built"]
+                            vertex.artifacts = cached_vertex_dict["artifacts"]
+                            vertex.built_object = cached_vertex_dict["built_object"]
+                            vertex.built_result = cached_vertex_dict["built_result"]
+                            vertex.full_data = cached_vertex_dict["full_data"]
+                            vertex.results = cached_vertex_dict["results"]
+                            try:
+                                vertex.finalize_build()
+                                if vertex.result is not None:
+                                    vertex.result.used_frozen_result = True
+                                should_build = False
+                            except Exception:  # noqa: BLE001
+                                logger.debug("Error finalizing build from cache", exc_info=True)
+                                vertex.built = False
+                                should_build = True
+                        except KeyError:
+                            vertex.built = False
+                            should_build = True
             else:
                 # Check the cache for the vertex
                 if get_cache is not None:

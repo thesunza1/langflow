@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QPlan: Skip Built Vertices — Check cache cho non-frozen vertices</title>
+<style>
+  body { font-family: 'Inter', sans-serif; background: #f5f5f5; max-width: 960px; margin: 0 auto; padding: 2rem; color: #222; }
+  h1 { font-size: 1.5rem; border-bottom: 2px solid #333; padding-bottom: 0.5rem; }
+  h2 { font-size: 1.2rem; margin-top: 2rem; }
+  .card { background: white; padding: 1rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin: 1rem 0; }
+  pre { background: #f0f0f0; padding: 0.5rem; border-radius: 4px; overflow-x: auto; font-size: 0.85rem; }
+  code { background: #f0f0f0; padding: 1px 4px; border-radius: 3px; }
+  .diff-add { background: #e8f5e9; padding: 2px 6px; border-radius: 3px; }
+  .diff-del { background: #ffebee; padding: 2px 6px; border-radius: 3px; }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.8rem; margin: 2px; }
+  .tag-fix { background: #ffecb3; }
+  .step-gitnexus { background: #e8f5e9; padding: 0.8rem; border-radius: 8px; margin: 0.5rem 0; border-left: 4px solid #4caf50; }
+</style>
+</head>
+<body>
+
+<h1>QPlan: Skip Built Vertices</h1>
+<p><strong>Mục đích:</strong> Khi chọn "Run from nearest", các upstream nodes đã có cache sẽ bị skip, chỉ build từ nearest node trở đi.</p>
+
+<div class="step-gitnexus">
+  <strong>GitNexus Analysis:</strong>
+  <ul>
+    <li>File: <code>src/lfx/src/lfx/graph/graph/base.py</code>, hàm <code>build_vertex()</code> dòng ~1637-1690</li>
+    <li>Cache cơ chế đã có sẵn (<code>get_cache/set_cache</code>) — chỉ dùng cho frozen vertices</li>
+    <li>Cần mở rộng cho non-frozen vertices cũng check cache</li>
+  </ul>
+</div>
+
+<h2>Thay đổi duy nhất</h2>
+
+<div class="card">
+  <p><strong>File:</strong> <code>src/lfx/src/lfx/graph/graph/base.py</code>, hàm <code>build_vertex()</code></p>
+
+  <p><strong>Hiện tại (dòng ~1652):</strong></p>
+  <pre class="diff-del">
+if not vertex.frozen or is_loop_component:
+    should_build = True          # ← non-frozen: luôn build lại
+else:
+    cached_result = await get_cache(key=vertex.id)
+    ...  # check cache cho frozen
+  </pre>
+
+  <p><strong>Sửa thành:</strong></p>
+  <pre class="diff-add">
+if not vertex.frozen or is_loop_component:
+    if get_cache is not None:
+        cached_result = await get_cache(key=vertex.id)
+        if not isinstance(cached_result, CacheMiss):
+            # restore từ cache, skip build
+            should_build = False
+        else:
+            should_build = True
+    else:
+        should_build = True
+else:
+    cached_result = await get_cache(key=vertex.id)
+    ...  # giữ nguyên logic cho frozen
+  </pre>
+</div>
+
+<p><strong>Giải thích:</strong> Phần code restore từ cache (dòng ~1660-1675) đã có sẵn — chỉ cần set <code>should_build = False</code> là nó tự động dùng cached result. Không cần sửa frontend, API, hay bất kỳ file nào khác.</p>
+
+<h2>Scope</h2>
+<ul>
+  <li><strong>In scope:</strong> 1 file — <code>src/lfx/src/lfx/graph/graph/base.py</code>, 1 đoạn code nhỏ</li>
+  <li><strong>Out of scope:</strong> Không sửa frontend, API, hay bất kỳ file nào khác</li>
+</ul>
+
+</body>
+</html>

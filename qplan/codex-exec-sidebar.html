@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kế hoạch - Hiển thị Codex Exec trong Sidebar</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; padding: 2rem; }
+  .container { max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 1.75rem; margin-bottom: 0.25rem; color: #f8fafc; }
+  .subtitle { color: #94a3b8; margin-bottom: 2rem; font-size: 0.9rem; }
+  h2 { font-size: 1.25rem; margin: 2rem 0 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid #1e293b; color: #f1f5f9; }
+  h3 { font-size: 1rem; margin: 1.5rem 0 0.5rem; color: #cbd5e1; }
+  .badge { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
+  .badge-green { background: #065f46; color: #6ee7b7; }
+  .badge-red { background: #7f1d1d; color: #fca5a5; }
+  .badge-blue { background: #1e3a5f; color: #93c5fd; }
+  .badge-yellow { background: #713f12; color: #fde68a; }
+  ul, ol { padding-left: 1.5rem; margin: 0.5rem 0; }
+  li { margin: 0.35rem 0; line-height: 1.6; }
+  code { background: #1e293b; padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.85rem; color: #e2e8f0; }
+  pre { background: #1e293b; padding: 1rem; border-radius: 8px; overflow-x: auto; font-size: 0.85rem; line-height: 1.5; margin: 0.75rem 0; }
+  .card { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 1.5rem; margin: 1rem 0; }
+  .diagram { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 1.5rem; margin: 1rem 0; overflow-x: auto; }
+  .diagram svg { width: 100%; height: auto; max-width: 800px; display: block; margin: 0 auto; }
+  .file-path { color: #60a5fa; font-family: monospace; }
+  table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; }
+  th, td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid #334155; }
+  th { color: #94a3b8; font-weight: 600; font-size: 0.85rem; }
+  .scope-section { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
+  @media (max-width: 640px) { .scope-section { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Codex Exec — Hiển thị trong Components Sidebar</h1>
+  <p class="subtitle">Kế hoạch bổ sung component "Codex Exec" vào danh sách components trong sidebar</p>
+
+  <h2>1. Phân tích hiện trạng</h2>
+  <div class="card">
+    <p><strong>Component đã tồn tại trong codebase:</strong></p>
+    <ul>
+      <li>📁 <span class="file-path">src/lfx/src/lfx/components/codex_exec/codex_exec.py</span> — định nghĩa class <code>CodexExecComponent</code></li>
+      <li>📁 <span class="file-path">src/lfx/src/lfx/components/codex_exec/__init__.py</span> — dynamic import mapping</li>
+      <li>📁 <span class="file-path">src/lfx/src/lfx/components/__init__.py</span> — registered là <code>"codex_exec": "__module__"</code></li>
+      <li>📁 <span class="file-path">src/lfx/src/lfx/_assets/component_index.json</span> — có trong prebuilt index với đầy đủ template</li>
+      <li>📁 <span class="file-path">src/lfx/src/lfx/tests/unit/components/test_codex_exec_component.py</span> — có unit test</li>
+    </ul>
+
+    <p style="margin-top: 1rem;"><strong>Nguyên nhân gốc — không hiển thị trong sidebar:</strong></p>
+    <p>Frontend dùng danh sách <code>SIDEBAR_CATEGORIES</code> tại <span class="file-path">src/frontend/src/utils/styleUtils.ts</span> (dòng 314) để lọc whitelist các category được hiển thị. <code>codex_exec</code> không có trong danh sách này, nên bị lọc bởi:</p>
+    <pre>CATEGORIES.some((cat) => cat.name === categoryName)</pre>
+    <p>trong <span class="file-path">categoryGroup.tsx</span> dòng 48.</p>
+  </div>
+
+  <h2>2. Yêu cầu chức năng</h2>
+
+  <h3>FR-01: Hiển thị category "Codex Exec" trong sidebar</h3>
+  <ul>
+    <li><strong>Mô tả:</strong> Component "Codex Exec" phải xuất hiện trong danh sách components của sidebar.</li>
+    <li><strong>Vị trí:</strong> Sidebar → Components → (trong list các category).</li>
+    <li><strong>Icon:</strong> <code>Terminal</code> (lucide icon).</li>
+    <li><strong>Thứ tự:</strong> Xuất hiện ở cuối danh sách category.</li>
+  </ul>
+
+  <h3>FR-02: Tương tác đầy đủ</h3>
+  <ul>
+    <li>Kéo-thả (drag & drop) được từ sidebar vào flow canvas.</li>
+    <li>Hiển thị đúng tên, mô tả, icon khi ở trong canvas.</li>
+    <li>Các input fields (Prompt 1-4, Directory, Bypass Sandbox, Timeout) hiển thị đúng trong node inspector.</li>
+    <li>Output "Result" xuất hiện ở output handle.</li>
+  </ul>
+
+  <h3>FR-03: Search hoạt động</h3>
+  <ul>
+    <li>Gõ "codex" hoặc "exec" trong thanh tìm kiếm sidebar phải tìm thấy component.</li>
+  </ul>
+
+  <h2>3. Yêu cầu phi chức năng</h2>
+  <ul>
+    <li><strong>Hiệu suất:</strong> Không ảnh hưởng đến thời gian khởi động — component đã được index sẵn.</li>
+    <li><strong>Bảo trì:</strong> Chỉ cần thêm 1 entry vào mảng <code>SIDEBAR_CATEGORIES</code>. Không thay đổi backend.</li>
+    <li><strong>i18n:</strong> Sử dụng translation key, không hardcode tiếng Anh.</li>
+    <li><strong>UI consistency:</strong> Theo đúng pattern của các category khác (display_name, name, icon).</li>
+  </ul>
+
+  <h2>4. Wireframe</h2>
+  <div class="diagram">
+    <svg viewBox="0 0 800 520" xmlns="http://www.w3.org/2000/svg">
+      <rect x="20" y="10" width="340" height="500" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1.5"/>
+      <rect x="36" y="24" width="308" height="36" rx="6" fill="#0f172a"/>
+      <text x="48" y="47" fill="#94a3b8" font-size="13" font-family="sans-serif">🔍 Search components...</text>
+      <text x="36" y="90" fill="#f1f5f9" font-size="13" font-family="sans-serif" font-weight="600">Components</text>
+      <circle cx="330" cy="86" r="8" fill="#334155"/>
+      <text x="327" y="90" fill="#94a3b8" font-size="10" font-family="sans-serif">&#x2699;</text>
+
+      <rect x="36" y="106" width="308" height="32" rx="6" fill="#1e293b"/>
+      <text x="52" y="127" fill="#cbd5e1" font-size="13" font-family="sans-serif">&#x1F4E5; Input &amp; Output</text>
+      <text x="322" y="127" fill="#64748b" font-size="11" font-family="sans-serif">&#x25B8;</text>
+
+      <rect x="36" y="146" width="308" height="32" rx="6" fill="#1e293b"/>
+      <text x="52" y="167" fill="#cbd5e1" font-size="13" font-family="sans-serif">&#x26A1; Processing</text>
+      <text x="322" y="167" fill="#64748b" font-size="11" font-family="sans-serif">&#x25B8;</text>
+
+      <rect x="36" y="186" width="308" height="32" rx="6" fill="#1e293b"/>
+      <text x="52" y="207" fill="#cbd5e1" font-size="13" font-family="sans-serif">&#x2194; Flow Control</text>
+      <text x="322" y="207" fill="#64748b" font-size="11" font-family="sans-serif">&#x25B8;</text>
+
+      <rect x="36" y="226" width="308" height="32" rx="6" fill="#1e293b"/>
+      <text x="52" y="247" fill="#cbd5e1" font-size="13" font-family="sans-serif">&#x1F916; Agents</text>
+      <text x="322" y="247" fill="#64748b" font-size="11" font-family="sans-serif">&#x25B8;</text>
+
+      <rect x="36" y="266" width="308" height="32" rx="6" fill="#1e293b"/>
+      <text x="52" y="287" fill="#cbd5e1" font-size="13" font-family="sans-serif">&#x1F5C4; Data</text>
+      <text x="322" y="287" fill="#64748b" font-size="11" font-family="sans-serif">&#x25B8;</text>
+
+      <rect x="36" y="306" width="308" height="80" rx="6" fill="#0ea5e9" opacity="0.15" stroke="#0ea5e9" stroke-width="1.5" stroke-dasharray="4,3"/>
+      <text x="52" y="327" fill="#38bdf8" font-size="13" font-family="sans-serif" font-weight="600">$ Codex Exec</text>
+      <text x="322" y="327" fill="#0ea5e9" font-size="11" font-family="sans-serif">&#x25BE;</text>
+
+      <rect x="52" y="340" width="276" height="28" rx="4" fill="#0f172a" opacity="0.6"/>
+      <text x="64" y="359" fill="#94a3b8" font-size="12" font-family="sans-serif">  Codex Exec</text>
+      <text x="226" y="359" fill="#64748b" font-size="10" font-family="sans-serif">execute via CLI</text>
+
+      <line x1="374" y1="346" x2="412" y2="346" stroke="#0ea5e9" stroke-width="2" marker-end="url(#arrow)"/>
+      <text x="416" y="342" fill="#0ea5e9" font-size="11" font-family="sans-serif" font-weight="500">NEW</text>
+      <defs>
+        <marker id="arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#0ea5e9"/>
+        </marker>
+      </defs>
+
+      <rect x="36" y="394" width="308" height="32" rx="6" fill="#1e293b"/>
+      <text x="52" y="415" fill="#cbd5e1" font-size="13" font-family="sans-serif">&#x1F9E9; Logic</text>
+      <text x="322" y="415" fill="#64748b" font-size="11" font-family="sans-serif">&#x25B8;</text>
+
+      <rect x="36" y="434" width="308" height="32" rx="6" fill="#1e293b"/>
+      <text x="52" y="455" fill="#cbd5e1" font-size="13" font-family="sans-serif">&#x1FA84; Helpers</text>
+      <text x="322" y="455" fill="#64748b" font-size="11" font-family="sans-serif">&#x25B8;</text>
+
+      <rect x="36" y="474" width="308" height="32" rx="6" fill="#1e293b"/>
+      <text x="52" y="495" fill="#cbd5e1" font-size="13" font-family="sans-serif">&#x1F9E0; Models</text>
+      <text x="322" y="495" fill="#64748b" font-size="11" font-family="sans-serif">&#x25B8;</text>
+    </svg>
+  </div>
+
+  <h2>5. Các file cần sửa</h2>
+  <table>
+    <tr><th>File</th><th>Thay đổi</th><th>Mức độ</th></tr>
+    <tr>
+      <td><span class="file-path">src/frontend/src/utils/styleUtils.ts</span></td>
+      <td>Thêm <code>{ display_name: "sidebar.category.codexExec", name: "codex_exec", icon: "Terminal" }</code> vào <code>SIDEBAR_CATEGORIES</code></td>
+      <td><span class="badge badge-green">1 dòng</span></td>
+    </tr>
+    <tr>
+      <td><span class="file-path">src/frontend/src/locales/en/translation.json</span></td>
+      <td>Thêm key <code>sidebar.category.codexExec</code> → "Codex Exec"</td>
+      <td><span class="badge badge-green">1 dòng</span></td>
+    </tr>
+  </table>
+  <p><strong>Không cần</strong> sửa bất kỳ file backend nào (Python).</p>
+
+  <h2>6. Data flow</h2>
+  <pre>
+Backend: prebuilt index → API → Frontend: typesStore.data
+                                          ↓
+               Sidebar: dataFilter (filtered data)
+                                          ↓
+               CategoryGroup: lọc theo SIDEBAR_CATEGORIES
+                                          ↓
+              ✅ Kết quả: codex_exec hiện trong sidebar
+  </pre>
+
+  <h2>7. Scope boundary</h2>
+  <div class="scope-section">
+    <div class="card">
+      <h3 style="color: #4ade80; margin-top: 0;">&#x2705; Trong scope</h3>
+      <ul>
+        <li>Thêm <code>codex_exec</code> vào <code>SIDEBAR_CATEGORIES</code></li>
+        <li>Thêm i18n translation key</li>
+        <li>Kiểm tra drag & drop hoạt động</li>
+        <li>Kiểm tra search tìm thấy component</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3 style="color: #f87171; margin-top: 0;">&#x274C; Ngoài scope</h3>
+      <ul>
+        <li>Sửa logic backend component</li>
+        <li>Sửa code của <code>CodexExecComponent</code></li>
+        <li>Thêm feature mới cho component</li>
+        <li>Tái cấu trúc sidebar</li>
+        <li>Xử lý bundle/extension mechanism</li>
+        <li>Sửa các component khác</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>8. Risks</h2>
+  <ul>
+    <li><span class="badge badge-yellow">Low</span> Translation key mới có thể bị thiếu nếu không update cả en locale.</li>
+    <li><span class="badge badge-green">None</span> Backend hoàn toàn không bị ảnh hưởng.</li>
+    <li><span class="badge badge-green">None</span> Các component khác không bị ảnh hưởng.</li>
+  </ul>
+
+  <h2>9. Các bước thực hiện (qcode)</h2>
+  <ol>
+    <li>Thêm entry cho <code>codex_exec</code> vào <code>SIDEBAR_CATEGORIES</code> trong <span class="file-path">styleUtils.ts</span></li>
+    <li>Thêm translation key vào <span class="file-path">translation.json</span> (en)</li>
+    <li>Chạy <code>make format_frontend</code></li>
+    <li>Build frontend & verify với qstart</li>
+  </ol>
+</div>
+</body>
+</html>

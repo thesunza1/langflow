@@ -96,6 +96,40 @@ function logFlowLoad(message: string, data?: any) {
   console.warn(`[FlowLoad] ${message}`, data || "");
 }
 
+/**
+ * Find the nearest direct upstream node that has been successfully built.
+ * Traverses predecessors level by level and returns the closest one
+ * with BuildStatus.BUILT.
+ */
+export function findNearestBuiltUpstream(
+  nodeId: string,
+  edges: Edge[],
+  flowBuildStatus: Record<string, { status: string; timestamp?: string }>,
+): string | null {
+  // Get direct predecessors (sources of edges targeting nodeId)
+  const directPredecessors = edges
+    .filter((e) => e.target === nodeId)
+    .map((e) => e.source);
+
+  if (directPredecessors.length === 0) return null;
+
+  // BFS level by level — return the closest built predecessor
+  const queue = [...directPredecessors];
+  const visited = new Set<string>();
+  while (queue.length > 0) {
+    const currentId = queue.shift()!;
+    if (visited.has(currentId)) continue;
+    visited.add(currentId);
+    const status = flowBuildStatus[currentId]?.status;
+    if (status === "BUILT") return currentId;
+    const preds = edges
+      .filter((e) => e.target === currentId)
+      .map((e) => e.source);
+    queue.push(...preds);
+  }
+  return null;
+}
+
 export async function updateVerticesOrder(
   flowId: string,
   startNodeId?: string | null,

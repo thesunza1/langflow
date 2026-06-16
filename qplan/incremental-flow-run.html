@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QPlan: Incremental Flow Run — Chạy có điểm dừng + Cache</title>
+<style>
+  body { font-family: 'Inter', sans-serif; background: #f5f5f5; max-width: 960px; margin: 0 auto; padding: 2rem; color: #222; }
+  h1 { font-size: 1.5rem; border-bottom: 2px solid #333; padding-bottom: 0.5rem; }
+  h2 { font-size: 1.2rem; margin-top: 2rem; }
+  h3 { font-size: 1rem; margin-top: 1.5rem; }
+  .scope { background: #e8f5e9; padding: 1rem; border-radius: 8px; }
+  .out-scope { background: #fbe9e7; padding: 1rem; border-radius: 8px; }
+  .card { background: white; padding: 1rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin: 1rem 0; }
+  pre { background: #f0f0f0; padding: 0.5rem; border-radius: 4px; overflow-x: auto; font-size: 0.85rem; }
+  .flow-diagram { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 1.5rem; background: white; border: 1px solid #ddd; border-radius: 8px; margin: 1rem 0; flex-wrap: wrap; }
+  .node { background: #e3f2fd; border: 2px solid #90caf9; border-radius: 8px; padding: 12px 20px; font-weight: bold; text-align: center; min-width: 48px; }
+  .node-active { background: #fff3e0; border-color: #ff9800; }
+  .node-done { background: #e8f5e9; border-color: #66bb6a; }
+  .node-stop { background: #fce4ec; border-color: #ef5350; }
+  .arrow { font-size: 1.5rem; color: #666; }
+  .popup { border: 2px dashed #ff9800; background: #fffde7; padding: 1rem; border-radius: 8px; margin: 1rem 0; }
+  .tag { display: inline-block; background: #e3f2fd; padding: 2px 8px; border-radius: 12px; font-size: 0.8rem; margin: 2px; }
+  .tag-new { background: #c8e6c9; }
+  .step { background: #fff3e0; padding: 0.8rem; border-radius: 8px; margin: 0.5rem 0; border-left: 4px solid #ff9800; }
+  .step-gitnexus { background: #e8f5e9; padding: 0.8rem; border-radius: 8px; margin: 0.5rem 0; border-left: 4px solid #4caf50; }
+  code { background: #f0f0f0; padding: 1px 4px; border-radius: 3px; font-size: 0.9rem; }
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+  th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+  th { background: #f5f5f5; }
+</style>
+</head>
+<body>
+
+<h1>QPlan: Incremental Flow Run — Chạy có điểm dừng + Cache</h1>
+
+<p><strong>Mục đích:</strong> Cho phép user chạy flow theo ý muốn — dừng tại component được chọn, và khi thêm component mới vào cuối thì có tuỳ chọn reuse kết quả từ component trước đó thay vì chạy lại từ đầu.</p>
+
+<h2>Quy trình thực hiện</h2>
+
+<div class="step-gitnexus">
+  <strong>Bước 1 — GitNexus Analysis:</strong> Dùng GitNexus phân tích codebase:
+  <ul>
+    <li>Đọc <code>gitnexus://setup</code> — tổng quan repo (71,020 symbols, 134,588 relationships)</li>
+    <li>Đọc <code>gitnexus://repo/langflow/context</code> — stats, tools, resources</li>
+    <li>Đọc <code>gitnexus://repo/langflow/clusters</code> — xác định modules liên quan: Graph, Ui, Components, Services</li>
+    <li>Phân tích file <code>src/backend/base/langflow/api/build.py</code> — đã có <code>stop_component_id</code> và <code>start_component_id</code> parameters</li>
+    <li>Phân tích <code>src/frontend/src/utils/buildUtils.ts</code> — đã có <code>stopNodeId</code> và <code>startNodeId</code> ở frontend</li>
+    <li>Xác định file <code>src/lfx/src/lfx/graph/graph/base.py</code> — graph engine, <code>sort_vertices()</code> và <code>stop_vertex</code> handling</li>
+  </ul>
+</div>
+
+<div class="step">
+  <strong>Bước 2 — Analyze:</strong> Xác định functional requirements từ yêu cầu user.
+</div>
+<div class="step">
+  <strong>Bước 3 — Write SRS + Wireframe:</strong> Lập tài liệu yêu cầu chi tiết.
+</div>
+<div class="step">
+  <strong>Bước 4 — Save:</strong> Ghi file plan vào <code>qplan/incremental-flow-run.html</code>.
+</div>
+<div class="step">
+  <strong>Bước 5 — Scope boundary:</strong> Đánh dấu in-scope / out-of-scope.
+</div>
+<div class="step">
+  <strong>Bước 6 — Confirm:</strong> Trình user phê duyệt.
+
+<h2>Phân tích hiện trạng (GitNexus)</h2>
+
+<div class="card">
+  <h3>Backend — Đã hỗ trợ sẵn</h3>
+  <p><code>src/backend/base/langflow/api/build.py</code> đã có:</p>
+  <ul>
+    <li><code>stop_component_id: str | None</code> — parameter để dừng build tại component cụ thể</li>
+    <li><code>start_component_id: str | None</code> — parameter để bắt đầu từ component cụ thể</li>
+    <li><code>graph.sort_vertices(stop_component_id, start_component_id)</code> — sort vertices theo start/stop</li>
+    <li><code>graph.stop_vertex</code> — nếu có, chỉ chạy tới component đó rồi dừng</li>
+  </ul>
+  <p><strong>Kết luận:</strong> Backend engine đã sẵn sàng cho tính năng "run tới C là dừng".</p>
+</div>
+
+<div class="card">
+  <h3>Frontend — Cần cải tiến</h3>
+  <p><code>src/frontend/src/utils/buildUtils.ts</code> đã có:</p>
+  <ul>
+    <li><code>stopNodeId</code> — truyền vào API build</li>
+    <li><code>startNodeId</code> — truyền vào API build</li>
+  </ul>
+  <p><strong>Vấn đề:</strong> UI chưa có cơ chế để user chọn "chạy từ đầu" hay "reuse cache" khi thêm component mới.</p>
+</div>
+
+<h2>User Flow & Ví dụ</h2>
+
+<div class="card">
+  <h3>Kịch bản 1: Run tới C là dừng</h3>
+  <div class="flow-diagram">
+    <div class="node">A</div>
+    <span class="arrow">→</span>
+    <div class="node">B</div>
+    <span class="arrow">→</span>
+    <div class="node node-stop">C ⬅️ Run</div>
+    <span class="arrow">→</span>
+    <div class="node" style="opacity:0.4">D (không chạy)</div>
+  </div>
+  <p>User bấm "Run" trên component C → hệ thống chỉ chạy <strong>A → B → C</strong>, D không chạy.</p>
+  <p><strong>Cách hoạt động:</strong> Frontend gọi API build với <code>stop_component_id = id của C</code>.</p>
+</div>
+
+<div class="card">
+  <h3>Kịch bản 2: Thêm E sau D</h3>
+  <div class="flow-diagram">
+    <div class="node node-done">A ✅</div>
+    <span class="arrow">→</span>
+    <div class="node node-done">B ✅</div>
+    <span class="arrow">→</span>
+    <div class="node node-done">C ✅</div>
+    <span class="arrow">→</span>
+    <div class="node node-done">D ✅</div>
+    <span class="arrow">→</span>
+    <div class="node node-active">E (mới)</div>
+  </div>
+  <p>User bấm "Run" trên E → hiện popup:</p>
+  <div class="popup">
+    <strong>⚡ Run từ đầu hay reuse kết quả?</strong><br><br>
+    <label><input type="radio" name="opt" checked> <strong>Run từ component gần nhất (D)</strong> — Giữ kết quả A, B, C, D. Chạy tiếp D → E<br>
+    <small class="text-muted">Nhanh hơn, vì A, B, C đã có kết quả.</small></label><br><br>
+    <label><input type="radio" name="opt"> <strong>Run từ đầu (A)</strong> — Chạy lại toàn bộ A → B → C → D → E<br>
+    <small class="text-muted">Chậm hơn, nhưng đảm bảo dữ liệu mới nhất.</small></label><br><br>
+    <button style="background:#1976d2;color:white;border:none;padding:8px 24px;border-radius:6px;cursor:pointer;">Run</button>
+    <button style="background:#e0e0e0;border:none;padding:8px 24px;border-radius:6px;cursor:pointer;">Huỷ</button>
+  </div>
+</div>
+
+<div class="card">
+  <h3>Kịch bản 3: Chạy từ component bất kỳ</h3>
+  <div class="flow-diagram">
+    <div class="node node-done">A ✅</div>
+    <span class="arrow">→</span>
+    <div class="node node-done">B ✅</div>
+    <span class="arrow">→</span>
+    <div class="node node-active">C ⬅️ Run</div>
+    <span class="arrow">→</span>
+    <div class="node">D</div>
+    <span class="arrow">→</span>
+    <div class="node">E</div>
+  </div>
+  <p>Nếu A, B đã chạy xong, user bấm Run trên C → popup hỏi "Dùng cache A,B hay chạy lại từ A?".</p>
+  <p>Nếu chọn dùng cache → chạy từ C với <code>start_component_id = C</code> (backend đã hỗ trợ).</p>
+</div>
+
+<h2>Functional Requirements</h2>
+
+<div class="card">
+  <h3>FR1: Run tới component được chọn là dừng</h3>
+  <p><strong>Mô tả:</strong> Khi user bấm "Run" trên 1 component C trong flow A→B→C→D, chỉ chạy A→B→C, không chạy D.</p>
+  <p><strong>Cách thực hiện:</strong> Frontend truyền <code>stop_component_id = id(C)</code> vào API build. Backend <code>sort_vertices(stop_component_id, ...)</code> đã hỗ trợ sẵn.</p>
+  <p><strong>File ảnh hưởng:</strong></p>
+  <ul>
+    <li><code>src/frontend/src/stores/flowStore.ts</code> — update <code>buildFlow</code> action để truyền <code>stopNodeId</code></li>
+    <li><code>src/frontend/src/utils/buildUtils.ts</code> — đảm bảo <code>stopNodeId</code> được dùng đúng</li>
+    <li><code>src/frontend/src/components/core/flowToolbarComponent/components/playground-button.tsx</code> — run button handler</li>
+  </ul>
+  <p><span class="tag tag-new">CẢI TIẾN</span></p>
+</div>
+
+<div class="card">
+  <h3>FR2: Popup chọn "Run từ đầu" vs "Reuse từ node gần nhất"</h3>
+  <p><strong>Mô tả:</strong> Khi thêm component mới (E) sau D đã chạy, bấm Run trên E → popup hỏi:</p>
+  <ul>
+    <li><strong>"Run từ component gần nhất"</strong> (mặc định) → chạy từ D→E, dùng cache A,B,C,D</li>
+    <li><strong>"Run từ đầu"</strong> → chạy lại toàn bộ A→B→C→D→E</li>
+  </ul>
+  <p><strong>Cách thực hiện:</strong> Frontend cần:</p>
+  <ul>
+    <li>Phát hiện upstream nodes đã có kết quả (dựa vào <code>flowBuildStatus</code> hoặc <code>buildInfo</code>)</li>
+    <li>Hiển thị popup với 2 tuỳ chọn khi bấm Run trên 1 node đã có cache upstream</li>
+    <li>Nếu chọn "reuse": gọi API với <code>start_component_id = node đã chạy gần nhất</code></li>
+    <li>Nếu chọn "run từ đầu": gọi API bình thường (không có start_component_id)</li>
+  </ul>
+  <p><strong>File cần tạo mới:</strong></p>
+  <ul>
+    <li><code>src/frontend/src/modals/runModeModal/index.tsx</code> — popup component</li>
+  </ul>
+  <p><strong>File cần sửa:</strong></p>
+  <ul>
+    <li><code>src/frontend/src/stores/flowStore.ts</code> — thêm logic check cache và xử lý tuỳ chọn</li>
+    <li><code>src/frontend/src/utils/buildUtils.ts</code> — <code>updateVerticesOrder</code> hỗ trợ start_component_id</li>
+  </ul>
+  <p><span class="tag tag-new">MỚI</span></p>
+</div>
+
+<div class="card">
+  <h3>FR3: Xác định upstream node gần nhất đã chạy</h3>
+  <p><strong>Mô tả:</strong> Khi user bấm Run trên node E, hệ thống cần xác định node upstream gần nhất đã có cached result để đề xuất reuse.</p>
+  <p><strong>Logic:</strong></p>
+  <ul>
+    <li>Xác định các direct predecessors của node được run (từ edge list)</li>
+    <li>Kiểm tra từng predecessor đã có <code>buildStatus === BuildStatus.BUILT</code> chưa</li>
+    <li>Predecessor gần nhất có result → đó là điểm bắt đầu cho reuse</li>
+  </ul>
+  <p><span class="tag tag-new">MỚI</span></p>
+</div>
+
+<h2>Non-functional Requirements</h2>
+<ul>
+  <li><strong>NFR1:</strong> Popup chỉ xuất hiện khi có upstream node đã build thành công (không popup nếu chưa có cache nào)</li>
+  <li><strong>NFR2:</strong> Mặc định chọn "Run từ component gần nhất" (an toàn, nhanh hơn)</li>
+  <li><strong>NFR3:</strong> Không làm thay đổi behavior của "Run All" (playground button)</li>
+  <li><strong>NFR4:</strong> Cache check dựa trên <code>flowBuildStatus</code> trong flowStore</li>
+</ul>
+
+<h2>Wireframe</h2>
+
+<h3>Popup Run Options</h3>
+<div style="background:white;border:1px solid #ddd;border-radius:12px;padding:2rem;max-width:480px;margin:1rem auto;box-shadow:0 4px 12px rgba(0,0,0,0.1);font-family:sans-serif;">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
+    <span style="font-size:1.5rem;">⚡</span>
+    <span style="font-weight:600;font-size:1.1rem;">Run Options</span>
+  </div>
+  <div style="color:#666;font-size:0.9rem;margin-bottom:16px;">
+    Component <strong style="color:#222;">E</strong> có upstream nodes đã chạy. Bạn muốn chạy thế nào?
+  </div>
+  <div style="border:2px solid #1976d2;border-radius:8px;padding:12px;margin-bottom:8px;background:#e3f2fd;cursor:pointer;">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span style="color:#1976d2;font-size:1.2rem;">↪</span>
+      <div>
+        <div style="font-weight:600;color:#1565c0;">Run từ component gần nhất</div>
+        <div style="font-size:0.8rem;color:#666;">Giữ kết quả A, B, C, D. Chạy D → E</div>
+      </div>
+      <div style="margin-left:auto;color:#4caf50;font-weight:600;">Recommended</div>
+    </div>
+  </div>
+  <div style="border:2px solid transparent;border-radius:8px;padding:12px;margin-bottom:16px;cursor:pointer;">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span style="font-size:1.2rem;">⟳</span>
+      <div>
+        <div style="font-weight:600;">Run từ đầu</div>
+        <div style="font-size:0.8rem;color:#666;">Chạy lại toàn bộ A → B → C → D → E</div>
+      </div>
+    </div>
+  </div>
+  <div style="display:flex;gap:8px;justify-content:flex-end;">
+    <button style="background:white;border:1px solid #ddd;padding:8px 24px;border-radius:6px;cursor:pointer;color:#666;">Cancel</button>
+    <button style="background:#1976d2;color:white;border:none;padding:8px 24px;border-radius:6px;cursor:pointer;font-weight:500;">Run</button>
+  </div>
+</div>
+
+<h2>Component Tree</h2>
+
+<table>
+  <tr>
+    <th>Component</th>
+    <th>Type</th>
+    <th>Trạng thái</th>
+  </tr>
+  <tr>
+    <td><code>src/frontend/src/modals/runModeModal/index.tsx</code></td>
+    <td>Modal</td>
+    <td><span class="tag tag-new">MỚI</span></td>
+  </tr>
+  <tr>
+    <td><code>src/frontend/src/stores/flowStore.ts</code></td>
+    <td>Store</td>
+    <td>Sửa</td>
+  </tr>
+  <tr>
+    <td><code>src/frontend/src/utils/buildUtils.ts</code></td>
+    <td>Utility</td>
+    <td>Sửa</td>
+  </tr>
+  <tr>
+    <td><code>src/frontend/src/controllers/API/queries/_builds/</code></td>
+    <td>API Query</td>
+    <td>Sửa (nếu cần)</td>
+  </tr>
+</table>
+
+<h2>Implementation Plan</h2>
+
+<ol>
+  <li><strong>FR1 (Run & dừng):</strong> Sửa <code>buildFlow</code> trong <code>flowStore.ts</code> — khi run 1 component, truyền <code>stopNodeId</code> là id của component đó vào API.</li>
+  <li><strong>FR2 (Popup):</strong> Tạo <code>runModeModal</code> component với 2 lựa chọn. Hook vào sự kiện run component.</li>
+  <li><strong>FR3 (Cache detection):</strong> Thêm helper function <code>findNearestBuiltUpstream</code> trong <code>buildUtils.ts</code> để xác định upstream node gần nhất đã chạy.</li>
+  <li><strong>FR2 tiếp:</strong> Kết nối popup với API call — nếu chọn "reuse" thì dùng <code>start_component_id</code>.</li>
+</ol>
+
+<h2>Scope</h2>
+<div class="scope">
+  <strong>In Scope:</strong>
+  <ul>
+    <li>Backend API đã hỗ trợ stop_component_id/start_component_id — không cần sửa backend</li>
+    <li>Sửa frontend flowStore.buildFlow để dùng stopNodeId</li>
+    <li>Tạo popup component mới (runModeModal)</li>
+    <li>Thêm helper tìm upstream node gần nhất đã build</li>
+    <li>Xử lý run từ component gần nhất (dùng start_component_id)</li>
+  </ul>
+</div>
+<div class="out-scope">
+  <strong>Out of Scope:</strong>
+  <ul>
+    <li>Không sửa backend graph engine</li>
+    <li>Không thay đổi playground/chat behavior</li>
+    <li>Không thêm cơ chế persist cache (dùng cache service hiện tại)</li>
+    <li>Không thêm node-level caching indicator trong graph view</li>
+  </ul>
+</div>
+
+</body>
+</html>

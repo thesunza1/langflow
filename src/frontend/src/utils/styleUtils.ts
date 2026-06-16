@@ -411,6 +411,11 @@ export const SIDEBAR_CATEGORIES = [
     name: "toolkits",
     icon: "Package2",
   },
+  {
+    display_name: "sidebar.category.codexExec",
+    name: "codex_exec",
+    icon: "Terminal",
+  },
 ];
 
 export const SIDEBAR_BUNDLES = [
