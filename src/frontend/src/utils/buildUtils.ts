@@ -876,6 +876,12 @@ export async function onEvent(
         message,
         type: logType,
       });
+      // Update the floating bar with the latest log line
+      if (message) {
+        useFlowStore
+          .getState()
+          .setLatestRunningText(component_id, message.slice(0, 200));
+      }
       break;
     }
     default:

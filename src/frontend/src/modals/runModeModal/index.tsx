@@ -21,6 +21,8 @@ type RunModeModalProps = {
   nearestBuiltNodeName?: string;
   onRunFromNearest: () => void;
   onRunFromStart: () => void;
+  onRunWithExistingStop: () => void;
+  onRunWithExistingAll: () => void;
 };
 
 export default function RunModeModal({
@@ -30,15 +32,23 @@ export default function RunModeModal({
   nearestBuiltNodeName,
   onRunFromNearest,
   onRunFromStart,
+  onRunWithExistingStop,
+  onRunWithExistingAll,
 }: RunModeModalProps) {
   const { t } = useTranslation();
-  const [mode, setMode] = useState<"nearest" | "start">("nearest");
+  const [mode, setMode] = useState<
+    "nearest" | "start" | "existing-stop" | "existing-all"
+  >("nearest");
 
   const handleRun = () => {
     if (mode === "nearest") {
       onRunFromNearest();
-    } else {
+    } else if (mode === "start") {
       onRunFromStart();
+    } else if (mode === "existing-stop") {
+      onRunWithExistingStop();
+    } else if (mode === "existing-all") {
+      onRunWithExistingAll();
     }
     onOpenChange(false);
   };
@@ -64,7 +74,9 @@ export default function RunModeModal({
 
         <RadioGroup
           value={mode}
-          onValueChange={(v) => setMode(v as "nearest" | "start")}
+          onValueChange={(v) =>
+            setMode(v as "nearest" | "start" | "existing-stop" | "existing-all")
+          }
           className="gap-2"
           data-testid="run-mode-radio-group"
         >
@@ -114,6 +126,62 @@ export default function RunModeModal({
                 {t(
                   "runMode.runFromStartDesc",
                   "Re-run every component from the start of the flow to the end",
+                )}
+              </span>
+            </div>
+          </Label>
+
+          <Label
+            htmlFor="mode-existing-stop"
+            className={cn(
+              "flex cursor-pointer items-start gap-3 rounded-lg border p-4 hover:bg-accent/50",
+              mode === "existing-stop" && "border-primary bg-accent/30",
+            )}
+          >
+            <RadioGroupItem
+              value="existing-stop"
+              id="mode-existing-stop"
+              className="mt-0.5"
+            />
+            <div className="flex flex-col gap-1">
+              <span className="text-sm font-medium">
+                {t(
+                  "runMode.runWithExistingStop",
+                  "Run and stop here (use existing)",
+                )}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {t(
+                  "runMode.runWithExistingStopDesc",
+                  "Use cached results for upstream, build this node, then stop",
+                )}
+              </span>
+            </div>
+          </Label>
+
+          <Label
+            htmlFor="mode-existing-all"
+            className={cn(
+              "flex cursor-pointer items-start gap-3 rounded-lg border p-4 hover:bg-accent/50",
+              mode === "existing-all" && "border-primary bg-accent/30",
+            )}
+          >
+            <RadioGroupItem
+              value="existing-all"
+              id="mode-existing-all"
+              className="mt-0.5"
+            />
+            <div className="flex flex-col gap-1">
+              <span className="text-sm font-medium">
+                {t(
+                  "runMode.runWithExistingAll",
+                  "Run from here to end (use existing)",
+                )}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {t(
+                  "runMode.runWithExistingAllDesc",
+                  "Use cached results for upstream, run from this node to the end",
                 )}
               </span>
             </div>

@@ -330,8 +330,8 @@ export default function NodeStatus({
   };
 
   const handleRunFromNearest = () => {
-    // stopNodeId = nodeId: runs upstream (using cache for built nodes),
-    // stops at this component. This is what the normal Run button does.
+    // Re-run everything from start, stop at this node.
+    // No startNodeId -> all vertices in vertices_to_run -> cache cleared -> full rebuild
     buildFlow({
       stopNodeId: nodeId,
       eventDelivery: eventDeliveryConfig,
@@ -340,11 +340,35 @@ export default function NodeStatus({
   };
 
   const handleRunFromStart = () => {
+    // Re-run ALL components from start to end (no stopNodeId)
     buildFlow({
-      stopNodeId: nodeId,
       eventDelivery: eventDeliveryConfig,
     });
     track("Flow Build - Run From Start", { stopNodeId: nodeId });
+  };
+
+  const handleRunWithExistingStop = () => {
+    // Use cached upstream results, build this node only, stop here.
+    // startNodeId=nodeId -> only this node is in vertices_to_run
+    buildFlow({
+      startNodeId: nodeId,
+      stopNodeId: nodeId,
+      eventDelivery: eventDeliveryConfig,
+    });
+    track("Flow Build - Run With Existing Stop", {
+      startNodeId: nodeId,
+      stopNodeId: nodeId,
+    });
+  };
+
+  const handleRunWithExistingAll = () => {
+    // Use cached upstream results, run from this node to the end.
+    // startNodeId=nodeId -> only downstream is in vertices_to_run
+    buildFlow({
+      startNodeId: nodeId,
+      eventDelivery: eventDeliveryConfig,
+    });
+    track("Flow Build - Run With Existing All", { startNodeId: nodeId });
   };
 
   const iconName =
@@ -589,6 +613,8 @@ export default function NodeStatus({
         nearestBuiltNodeName={nearestBuiltNode || undefined}
         onRunFromNearest={handleRunFromNearest}
         onRunFromStart={handleRunFromStart}
+        onRunWithExistingStop={handleRunWithExistingStop}
+        onRunWithExistingAll={handleRunWithExistingAll}
       />
     </>
   );

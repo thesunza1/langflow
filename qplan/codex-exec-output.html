@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kế hoạch - Cải thiện Output của Codex Exec</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; padding: 2rem; }
+  .container { max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 1.75rem; margin-bottom: 0.25rem; color: #f8fafc; }
+  .subtitle { color: #94a3b8; margin-bottom: 2rem; font-size: 0.9rem; }
+  h2 { font-size: 1.25rem; margin: 2rem 0 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid #1e293b; color: #f1f5f9; }
+  h3 { font-size: 1rem; margin: 1.5rem 0 0.5rem; color: #cbd5e1; }
+  .badge { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
+  .badge-green { background: #065f46; color: #6ee7b7; }
+  .badge-red { background: #7f1d1d; color: #fca5a5; }
+  .badge-blue { background: #1e3a5f; color: #93c5fd; }
+  .badge-yellow { background: #713f12; color: #fde68a; }
+  ul, ol { padding-left: 1.5rem; margin: 0.5rem 0; }
+  li { margin: 0.35rem 0; line-height: 1.6; }
+  code { background: #1e293b; padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.85rem; color: #e2e8f0; }
+  pre { background: #1e293b; padding: 1rem; border-radius: 8px; overflow-x: auto; font-size: 0.85rem; line-height: 1.5; margin: 0.75rem 0; }
+  .card { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 1.5rem; margin: 1rem 0; }
+  .file-path { color: #60a5fa; font-family: monospace; }
+  table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; }
+  th, td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid #334155; }
+  th { color: #94a3b8; font-weight: 600; font-size: 0.85rem; }
+  .scope-section { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
+  @media (max-width: 640px) { .scope-section { grid-template-columns: 1fr; } }
+  .flow-box { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 1rem; margin: 0.5rem 0; }
+  .flow-step { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.5rem 0; }
+  .flow-num { background: #1e3a5f; color: #93c5fd; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 600; flex-shrink: 0; }
+  .flow-content { flex: 1; }
+  .diff-add { background: #065f46; color: #6ee7b7; padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.8rem; }
+  .diff-remove { background: #7f1d1d; color: #fca5a5; padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.8rem; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Codex Exec — Cải thiện Output</h1>
+  <p class="subtitle">Xử lý output bị lặp (think + answer) và tăng/mở limit output</p>
+
+  <h2>1. Phân tích hiện trạng</h2>
+
+  <h3>1.1 Vấn đề output bị lặp</h3>
+  <div class="card">
+    <p><code>codex exec</code> output ra stdout gồm nhiều phần:</p>
+    <ul>
+      <li><strong>Header</strong> — thông tin phiên bản, model, session id</li>
+      <li><strong>hook events</strong> — SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop</li>
+      <li><strong>Tool execution logs</strong> — các lệnh shell đã chạy và kết quả</li>
+      <li><strong>Thinking/reasoning</strong> — quá trình suy nghĩ của agent (dòng bắt đầu bằng <code>codex</code>)</li>
+      <li><strong>Final answer</strong> — câu trả lời cuối cùng</li>
+    </ul>
+    <p>Hiện tại component lấy <strong>toàn bộ stdout</strong> → chứa cả thinking traces, không phải là output hữu ích cho flow downstream.</p>
+    <p style="margin-top: 0.75rem;"><strong>Giải pháp:</strong> Dùng flag <code>--output-last-message &lt;file&gt;</code> có sẵn của Codex CLI — flag này chỉ ghi <em>câu trả lời cuối cùng</em> của agent vào file, bỏ qua toàn bộ thinking/tool logs.</p>
+    <div class="flow-box">
+      <div class="flow-step"><div class="flow-num">1</div><div class="flow-content"><code>codex exec "prompt" --output-last-message /tmp/msg.txt</code></div></div>
+      <div class="flow-step"><div class="flow-num">2</div><div class="flow-content">Codex CLI chạy, stdout vẫn ra đầy đủ (nhưng ta ignore)</div></div>
+      <div class="flow-step"><div class="flow-num">3</div><div class="flow-content">File <code>/tmp/msg.txt</code> chỉ chứa <strong>final answer</strong></div></div>
+      <div class="flow-step"><div class="flow-num">4</div><div class="flow-content">Đọc file → trả về làm output</div></div>
+    </div>
+  </div>
+
+  <h3>1.2 Vấn đề output bị giới hạn</h3>
+  <div class="card">
+    <p>Code hiện tại:</p>
+    <pre>max_len = 100000
+if len(output) > max_len:
+    output = output[:max_len] + "\n\n... [Output truncated]"</pre>
+    <p>Giới hạn <strong>100.000 ký tự</strong>. Sau khi chuyển sang dùng <code>--output-last-message</code>, output sẽ nhỏ hơn (chỉ final answer, không còn thinking traces), nhưng user vẫn muốn tăng/mở limit.</p>
+    <p><strong>Cách xử lý:</strong></p>
+    <ul>
+      <li>Thêm input <code>max_output_length</code> dạng số, giá trị mặc định <strong>500.000</strong>, advanced=true</li>
+      <li>Nếu user set = 0 hoặc âm → bỏ qua truncation (unlimited)</li>
+    </ul>
+  </div>
+
+  <h2>2. Yêu cầu chức năng</h2>
+
+  <h3>FR-01: Output chỉ chứa final answer</h3>
+  <ul>
+    <li>Không còn thinking traces, tool logs, hook events trong output của component</li>
+    <li>Output là message text chứa nội dung câu trả lời cuối cùng từ Codex CLI</li>
+  </ul>
+
+  <h3>FR-02: Cấu hình độ dài output</h3>
+  <ul>
+    <li>Thêm input <code>max_output_length</code> (advanced) kiểu số, mặc định 500000</li>
+    <li>Giá trị ≤ 0 = unlimited (bỏ qua truncation)</li>
+  </ul>
+
+  <h2>3. Files cần sửa</h2>
+  <table>
+    <tr><th>File</th><th>Thay đổi</th></tr>
+    <tr>
+      <td><span class="file-path">src/lfx/src/lfx/components/codex_exec/codex_exec.py</span></td>
+      <td>
+        <strong>1.</strong> Thêm input <code>max_output_length</code> (kiểu IntInput)<br>
+        <strong>2.</strong> Dùng <code>--output-last-message</code> thay vì <code>capture_output=True</code><br>
+        <strong>3.</strong> Đọc file để lấy final answer<br>
+        <strong>4.</strong> Dùng <code>max_output_length</code> để quyết định truncation<br>
+        <strong>5.</strong> Dọn file temp sau khi đọc
+      </td>
+    </tr>
+    <tr>
+      <td><span class="file-path">src/lfx/src/lfx/tests/unit/components/test_codex_exec_component.py</span></td>
+      <td>Cập nhật test phù hợp với logic mới</td>
+    </tr>
+  </table>
+
+  <h2>4. Scope boundary</h2>
+  <div class="scope-section">
+    <div class="card">
+      <h3 style="color: #4ade80; margin-top: 0;">✅ Trong scope</h3>
+      <ul>
+        <li>Sửa <code>execute()</code> để dùng <code>--output-last-message</code></li>
+        <li>Thêm input <code>max_output_length</code> với default 500000</li>
+        <li>Cập nhật unit test</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3 style="color: #f87171; margin-top: 0;">❌ Ngoài scope</h3>
+      <ul>
+        <li>Sửa frontend sidebar</li>
+        <li>Thêm output types khác</li>
+        <li>Sửa cơ chế component loading</li>
+        <li>Các component khác</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>5. Implementation details</h2>
+
+  <div class="card">
+    <p><strong>Input mới:</strong></p>
+    <pre>IntInput(
+    name="max_output_length",
+    display_name="Max Output Length",
+    info="Maximum output length in characters. Set to 0 for unlimited.",
+    value=500000,
+    advanced=True,
+)</pre>
+
+    <p style="margin-top: 1rem;"><strong>Logic execute() mới:</strong></p>
+    <pre>import tempfile
+
+# Thay vì capture_output=True, dùng --output-last-message
+with tempfile.NamedTemporaryFile(delete=False, suffix=".md") as tmp:
+    output_path = tmp.name
+
+cmd = ["codex", "exec"]
+if self.bypass_sandbox:
+    cmd.append("--dangerously-bypass-approvals-and-sandbox")
+cmd += [combined, "-C", str(dir_path), "--output-last-message", output_path]
+
+result = subprocess.run(cmd, ..., stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+# Đọc final answer từ file
+output = Path(output_path).read_text(encoding="utf-8") if Path(output_path).exists() else ""
+
+# Xoá file temp
+Path(output_path).unlink(missing_ok=True)
+
+# Truncate nếu cần
+if output and hasattr(self, "max_output_length"):
+    max_len = int(self.max_output_length)
+    if max_len > 0 and len(output) > max_len:
+        output = output[:max_len] + "\n\n... [Output truncated]"</pre>
+  </div>
+
+  <h2>6. Các bước thực hiện (qcode)</h2>
+  <ol>
+    <li>Sửa <code>codex_exec.py</code>:
+      <ul>
+        <li>Import <code>tempfile</code> và <code>os</code></li>
+        <li>Thêm input <code>max_output_length</code> (IntInput)</li>
+        <li>Chỉnh <code>execute()</code> dùng <code>--output-last-message</code></li>
+        <li>Đọc và xoá file temp, áp dụng truncation</li>
+      </ul>
+    </li>
+    <li>Cập nhật unit test</li>
+    <li>Chạy test: <code>uv run pytest src/lfx/src/lfx/tests/unit/components/test_codex_exec_component.py -v</code></li>
+    <li>Build lại component index (nếu cần)</li>
+  </ol>
+</div>
+</body>
+</html>

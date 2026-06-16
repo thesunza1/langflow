@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kế hoạch - Real-time stream output cho Codex Exec</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; padding: 2rem; }
+  .container { max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 1.75rem; margin-bottom: 0.25rem; color: #f8fafc; }
+  .subtitle { color: #94a3b8; margin-bottom: 2rem; font-size: 0.9rem; }
+  h2 { font-size: 1.25rem; margin: 2rem 0 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid #1e293b; color: #f1f5f9; }
+  h3 { font-size: 1rem; margin: 1.5rem 0 0.5rem; color: #cbd5e1; }
+  .badge { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
+  .badge-green { background: #065f46; color: #6ee7b7; }
+  ul, ol { padding-left: 1.5rem; margin: 0.5rem 0; }
+  li { margin: 0.35rem 0; line-height: 1.6; }
+  code { background: #1e293b; padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.85rem; color: #e2e8f0; }
+  pre { background: #1e293b; padding: 1rem; border-radius: 8px; overflow-x: auto; font-size: 0.85rem; line-height: 1.5; margin: 0.75rem 0; }
+  .card { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 1.5rem; margin: 1rem 0; }
+  .file-path { color: #60a5fa; font-family: monospace; }
+  .scope-section { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
+  @media (max-width: 640px) { .scope-section { grid-template-columns: 1fr; } }
+  .flow-box { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 1rem; margin: 0.5rem 0; }
+  .flow-step { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.35rem 0; }
+  .flow-num { background: #1e3a5f; color: #93c5fd; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 600; flex-shrink: 0; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Codex Exec — Real-time Log Stream</h1>
+  <p class="subtitle">Stream output từ Codex CLI về frontend real-time trong khi chạy</p>
+
+  <h2>1. Phân tích hiện trạng</h2>
+  <div class="card">
+    <p>Hiện tại <code>CodexExecComponent.execute()</code> dùng <code>subprocess.run()</code> — block cho đến khi Codex CLI chạy xong, rồi mới trả kết quả.</p>
+    <p><strong>Vấn đề:</strong> Người dùng không thấy được tiến trình đang chạy, không biết Codex đang làm gì (đang đọc file, đang suy nghĩ, đang chạy lệnh...).</p>
+    <p><strong>Mong muốn:</strong> Khi Codex Exec đang chạy, output log từ Codex CLI hiển thị real-time trên khung "Running" của node.</p>
+  </div>
+
+  <h2>2. Giải pháp</h2>
+  <div class="card">
+    <p><strong>Cơ chế:</strong> Component base class có method <code>self.log(message)</code> — gửi log events qua EventManager → frontend real-time.</p>
+    <p><strong>Các bước:</strong></p>
+    <ol>
+      <li>Đổi từ <code>subprocess.run()</code> (block) sang <code>subprocess.Popen()</code> (async streaming)</li>
+      <li>Đọc stdout line-by-line, gọi <code>self.log(line)</code> cho mỗi dòng</li>
+      <li>Vẫn giữ <code>--output-last-message</code> để lấy final answer cho Result output</li>
+      <li>Stderr cũng stream log riêng</li>
+    </ol>
+  </div>
+
+  <h2>3. File cần sửa</h2>
+  <table>
+    <tr><th>File</th><th>Thay đổi</th></tr>
+    <tr>
+      <td><span class="file-path">src/lfx/src/lfx/components/codex_exec/codex_exec.py</span></td>
+      <td>
+        - Import <code>select</code> (hoặc dùng <code>asyncio.create_subprocess_exec</code>)<br>
+        - Đổi <code>subprocess.run</code> → <code>subprocess.Popen</code><br>
+        - Stream stdout line-by-line qua <code>self.log()</code><br>
+        - Stream stderr line-by-line qua <code>self.log()</code><br>
+        - Vẫn đọc file <code>--output-last-message</code> cho kết quả cuối
+      </td>
+    </tr>
+  </table>
+
+  <h2>4. Scope</h2>
+  <div class="scope-section">
+    <div class="card">
+      <h3 style="color: #4ade80; margin-top: 0;">✅ Trong scope</h3>
+      <ul>
+        <li>Stream real-time log từ Codex CLI</li>
+        <li>Giữ nguyên output Result (final answer từ <code>--output-last-message</code>)</li>
+        <li>Xử lý timeout</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3 style="color: #f87171; margin-top: 0;">❌ Ngoài scope</h3>
+      <ul>
+        <li>Sửa giao diện frontend</li>
+        <li>Thay đổi cơ chế component output</li>
+        <li>Các component khác</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>5. Implementation detail</h2>
+  <div class="card">
+    <pre>
+import subprocess
+import asyncio
+import os
+
+# 1. Start process
+process = subprocess.Popen(
+    cmd,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE,
+    text=True,
+    bufsize=1,  # line buffered
+)
+
+# 2. Stream stdout + stderr line by line
+import select
+import time
+
+start_time = time.time()
+timeout_secs = int(self.timeout)
+
+while True:
+    # Check timeout
+    if time.time() - start_time > timeout_secs:
+        process.kill()
+        raise subprocess.TimeoutExpired(cmd, timeout_secs)
+
+    # Read a line from stdout
+    stdout_line = process.stdout.readline()
+    if stdout_line:
+        self.log(stdout_line.rstrip(), name="codex")
+
+    # Read a line from stderr
+    stderr_line = process.stderr.readline()
+    if stderr_line:
+        self.log(stderr_line.rstrip(), name="codex:err")
+
+    # Check if process finished and no more output
+    if not stdout_line and not stderr_line and process.poll() is not None:
+        break
+
+process.wait()
+
+# 3. Read final answer from --output-last-message file
+output = Path(output_path).read_text(encoding="utf-8").strip()
+    </pre>
+  </div>
+</div>
+</body>
+</html>

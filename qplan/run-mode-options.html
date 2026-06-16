@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kế hoạch - Thêm 2 option run mới cho Node</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; padding: 2rem; }
+  .container { max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 1.75rem; margin-bottom: 0.25rem; color: #f8fafc; }
+  .subtitle { color: #94a3b8; margin-bottom: 2rem; font-size: 0.9rem; }
+  h2 { font-size: 1.25rem; margin: 2rem 0 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid #1e293b; color: #f1f5f9; }
+  h3 { font-size: 1rem; margin: 1.5rem 0 0.5rem; color: #cbd5e1; }
+  .badge { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
+  .badge-green { background: #065f46; color: #6ee7b7; }
+  .badge-red { background: #7f1d1d; color: #fca5a5; }
+  .badge-yellow { background: #713f12; color: #fde68a; }
+  .badge-blue { background: #1e3a5f; color: #93c5fd; }
+  ul, ol { padding-left: 1.5rem; margin: 0.5rem 0; }
+  li { margin: 0.35rem 0; line-height: 1.6; }
+  code { background: #1e293b; padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.85rem; color: #e2e8f0; }
+  pre { background: #1e293b; padding: 1rem; border-radius: 8px; overflow-x: auto; font-size: 0.85rem; line-height: 1.5; margin: 0.75rem 0; }
+  .card { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 1.5rem; margin: 1rem 0; }
+  .file-path { color: #60a5fa; font-family: monospace; }
+  table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; }
+  th, td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid #334155; }
+  th { color: #94a3b8; font-weight: 600; font-size: 0.85rem; }
+  .scope-section { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
+  @media (max-width: 640px) { .scope-section { grid-template-columns: 1fr; } }
+  .matrix { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Thêm 2 Run Options mới cho Node Context Menu</h1>
+  <p class="subtitle">Fix "Run and stop here" đang chạy lại upstream + thêm "use existing" và "run from here"</p>
+
+  <h2>1. Phân tích hiện trạng</h2>
+
+  <div class="card">
+    <p><strong>Vấn đề 1:</strong> Cả 2 options hiện tại đều gọi <code>buildFlow({ stopNodeId: nodeId })</code> giống hệt nhau, nên hành vi không khác biệt.</p>
+    <p><strong>Vấn đề 2:</strong> Cache clearing trong build.py xoá cache của <strong>tất cả</strong> vertices trong <code>vertices_to_run</code> → kể cả option "Run and stop here" cũng chạy lại upstream.</p>
+    <p><strong>Giải pháp gốc:</strong> Backend đã hỗ trợ đầy đủ qua params <code>start_component_id</code> và <code>stop_component_id</code>. Frontend chỉ cần gửi đúng params.</p>
+  </div>
+
+  <h2>2. 4 Run Options</h2>
+
+  <div class="matrix">
+    <div class="card">
+      <h3 style="margin-top: 0; color: #60a5fa;">1. Run and stop here</h3>
+      <p><span class="badge badge-yellow">Sửa</span> <code>stopNodeId=B</code></p>
+      <p class="subtitle" style="margin-top: 0.5rem;">Chạy lại từ đầu → stop tại B</p>
+      <ul>
+        <li>A: clear cache → rebuild</li>
+        <li>B: clear cache → rebuild</li>
+        <li>⛔ stop</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3 style="margin-top: 0; color: #60a5fa;">2. Run from beginning</h3>
+      <p><span class="badge badge-yellow">Sửa</span> Không params</p>
+      <p class="subtitle" style="margin-top: 0.5rem;">Chạy lại từ đầu → chạy hết</p>
+      <ul>
+        <li>A: clear cache → rebuild</li>
+        <li>B: clear cache → rebuild</li>
+        <li>C: clear cache → rebuild</li>
+        <li>D: clear cache → rebuild</li>
+        <li>✅ end</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3 style="margin-top: 0; color: #4ade80;">3. Run and stop here (use existing) <span class="badge badge-green">NEW</span></h3>
+      <p><code>startNodeId=B, stopNodeId=B</code></p>
+      <p class="subtitle" style="margin-top: 0.5rem;">Giữ cache upstream, build B, stop</p>
+      <ul>
+        <li>A: dùng cache (không rebuild)</li>
+        <li>B: clear cache → rebuild</li>
+        <li>⛔ stop</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3 style="margin-top: 0; color: #4ade80;">4. Run from here to end (use existing) <span class="badge badge-green">NEW</span></h3>
+      <p><code>startNodeId=C</code></p>
+      <p class="subtitle" style="margin-top: 0.5rem;">Giữ cache upstream, chạy từ C đến hết</p>
+      <ul>
+        <li>A, B: dùng cache (không rebuild)</li>
+        <li>C: clear cache → rebuild</li>
+        <li>D: clear cache → rebuild</li>
+        <li>✅ end</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>3. Files cần sửa</h2>
+  <table>
+    <tr><th>File</th><th>Thay đổi</th></tr>
+    <tr>
+      <td><span class="file-path">src/frontend/src/modals/runModeModal/index.tsx</span></td>
+      <td>
+        - Thêm 2 radio buttons mới<br>
+        - Thêm 2 props: <code>onRunWithExistingStop</code>, <code>onRunWithExistingAll</code><br>
+        - Update type <code>RunModeModalProps</code>
+      </td>
+    </tr>
+    <tr>
+      <td><span class="file-path">src/frontend/src/CustomNodes/GenericNode/components/NodeStatus/index.tsx</span></td>
+      <td>
+        - Sửa <code>handleRunFromNearest</code>: <code>buildFlow({ startNodeId: nodeId, stopNodeId: nodeId })</code><br>
+        - Sửa <code>handleRunFromStart</code>: <code>buildFlow({})</code> (không stopNodeId)<br>
+        - Thêm <code>handleRunWithExistingStop</code>: <code>buildFlow({ startNodeId: nodeId, stopNodeId: nodeId })</code><br>
+        - Thêm <code>handleRunWithExistingAll</code>: <code>buildFlow({ startNodeId: nodeId })</code><br>
+        - Cập nhật <code>RunModeModal</code> props
+      </td>
+    </tr>
+    <tr>
+      <td><span class="file-path">src/frontend/src/locales/en.json</span></td>
+      <td>Thêm 4 translation keys mới</td>
+    </tr>
+  </table>
+
+  <h2>4. Scope</h2>
+  <div class="scope-section">
+    <div class="card">
+      <h3 style="color: #4ade80; margin-top: 0;">✅ Trong scope</h3>
+      <ul>
+        <li>Sửa frontend run modal</li>
+        <li>Sửa handler logic</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3 style="color: #f87171; margin-top: 0;">❌ Ngoài scope</h3>
+      <ul>
+        <li>Sửa backend build.py (giữ nguyên cache clearing hiện tại)</li>
+        <li>Sửa graph engine</li>
+        <li>Sửa component khác</li>
+      </ul>
+    </div>
+  </div>
+</div>
+</body>
+</html>

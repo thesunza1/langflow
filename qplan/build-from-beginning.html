@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kế hoạch - Fix "Run from beginning" bỏ qua các bước đã chạy</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; padding: 2rem; }
+  .container { max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 1.75rem; margin-bottom: 0.25rem; color: #f8fafc; }
+  .subtitle { color: #94a3b8; margin-bottom: 2rem; font-size: 0.9rem; }
+  h2 { font-size: 1.25rem; margin: 2rem 0 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid #1e293b; color: #f1f5f9; }
+  h3 { font-size: 1rem; margin: 1.5rem 0 0.5rem; color: #cbd5e1; }
+  .badge { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
+  .badge-green { background: #065f46; color: #6ee7b7; }
+  .badge-red { background: #7f1d1d; color: #fca5a5; }
+  .badge-yellow { background: #713f12; color: #fde68a; }
+  .badge-blue { background: #1e3a5f; color: #93c5fd; }
+  ul, ol { padding-left: 1.5rem; margin: 0.5rem 0; }
+  li { margin: 0.35rem 0; line-height: 1.6; }
+  code { background: #1e293b; padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.85rem; color: #e2e8f0; }
+  pre { background: #1e293b; padding: 1rem; border-radius: 8px; overflow-x: auto; font-size: 0.85rem; line-height: 1.5; margin: 0.75rem 0; }
+  .card { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 1.5rem; margin: 1rem 0; }
+  .file-path { color: #60a5fa; font-family: monospace; }
+  table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; }
+  th, td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid #334155; }
+  th { color: #94a3b8; font-weight: 600; font-size: 0.85rem; }
+  .scope-section { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
+  @media (max-width: 640px) { .scope-section { grid-template-columns: 1fr; } }
+  .flow-box { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 1rem; margin: 0.5rem 0; }
+  .flow-step { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.35rem 0; }
+  .flow-num { background: #1e3a5f; color: #93c5fd; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 600; flex-shrink: 0; }
+  .highlight { background: #0ea5e9; opacity: 0.15; border: 1px solid #0ea5e9; border-radius: 6px; padding: 0.2rem 0.5rem; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Run from Beginning — Fix bỏ qua build khi có cache</h1>
+  <p class="subtitle">Graph execution engine dùng cached result nên không chạy lại các bước đã build</p>
+
+  <h2>1. Phân tích hiện trạng</h2>
+
+  <h3>1.1 Triệu chứng</h3>
+  <div class="card">
+    <ol>
+      <li>User chạy flow <strong>A → B</strong> lần đầu: cả A và B đều build thành công</li>
+      <li>User click B → Run → Run from beginning</li>
+      <li><strong>Kết quả mong đợi:</strong> A và B đều chạy lại từ đầu</li>
+      <li><strong>Kết quả thực tế:</strong> A không chạy lại (0ms), B có chạy</li>
+    </ol>
+  </div>
+
+  <h3>1.2 Nguyên nhân gốc</h3>
+  <div class="card">
+    <p>Trong <span class="file-path">src/lfx/src/lfx/graph/graph/base.py</span>, method <code>build_vertex()</code> (dòng 1618):</p>
+    <pre>if get_cache is not None:
+    cached_result = await get_cache(key=vertex.id)
+    if not isinstance(cached_result, CacheMiss):
+        # kết quả từ cache → skip build, dùng cached data
+        should_build = False
+        # ... set vertex.built, vertex.results, v.v. từ cache
+    </pre>
+    <p>Cache service được inject vào từ <code>chat_service.get_cache()</code>. Khi chạy lần 2, kết quả của A vẫn còn trong cache → bị skip.</p>
+    <p>Không có cơ chế phân biệt "chạy lần đầu" vs "chạy từ beginning". Cả hai đều dùng chung cache.</p>
+  </div>
+
+  <h3>1.3 Data flow</h3>
+  <div class="flow-box">
+    <div class="flow-step"><div class="flow-num">1</div><div class="flow-content">UI gọi <code>POST /build</code> với <code>start_component_id=B</code></div></div>
+    <div class="flow-step"><div class="flow-num">2</div><div class="flow-content"><code>generate_flow_events()</code> → <code>build_graph_from_data()</code> → tạo graph mới</div></div>
+    <div class="flow-step"><div class="flow-num">3</div><div class="flow-content"><code>graph.process()</code> → sort vertices → gọi <code>build_vertex()</code> cho từng layer</div></div>
+    <div class="flow-step"><div class="flow-num">4</div><div class="flow-content"><strong>build_vertex()</strong> → check cache → có cached result → <span style="color: #f87171;">skip build (0ms)</span></div></div>
+  </div>
+
+  <h2>2. Yêu cầu chức năng</h2>
+
+  <h3>FR-01: "Run from beginning" phải chạy lại tất cả vertices</h3>
+  <ul>
+    <li>Khi user click "Run from beginning", tất cả các node từ đầu flow đến node được chọn đều phải được rebuild</li>
+    <li>Không được dùng cached results từ lần chạy trước</li>
+  </ul>
+
+  <h3>FR-02: Incremental run vẫn hoạt động</h3>
+  <ul>
+    <li>Khi user chỉ chạy 1 node đơn lẻ (không phải "Run from beginning"), các upstream node vẫn dùng cache như bình thường</li>
+  </ul>
+
+  <h2>3. Giải pháp</h2>
+  <div class="card">
+    <p><strong>Cách tiếp cận:</strong> Invalidate (xoá) cache của <strong>tất cả vertices upstream</strong> của <code>start_component_id</code> trước khi build.</p>
+    <p>Điều này đảm bảo:</p>
+    <ul>
+      <li>Khi build từ A (full run) → mọi vertex đều không có cache → build hết</li>
+      <li>Khi build từ B (incremental, chỉ chạy node B) → cache của B bị xoá, các node trước đó giữ nguyên cache</li>
+    </ul>
+    <p style="margin-top: 1rem;"><strong>Điểm sửa:</strong> Trong <span class="file-path">src/backend/base/langflow/api/build.py</span>, hàm <code>generate_flow_events()</code> — trước khi sort vertices và build, thêm bước clear cache cho tất cả vertices trong <code>vertices_to_run</code>.</p>
+  </div>
+
+  <h2>4. Files cần sửa</h2>
+  <table>
+    <tr><th>File</th><th>Thay đổi</th></tr>
+    <tr>
+      <td><span class="file-path">src/backend/base/langflow/api/build.py</span></td>
+      <td>
+        Trong <code>generate_flow_events()</code>, sau khi có <code>ids</code> và <code>vertices_to_run</code> (dòng ~450),<br>
+        thêm vòng lặp clear cache cho từng vertex trong <code>ids</code> (tất cả các node cần build từ đầu)
+      </td>
+    </tr>
+  </table>
+
+  <h2>5. Chi tiết implementation</h2>
+  <div class="card">
+    <p><strong>Trong <code>generate_flow_events()</code> (build.py), sau dòng <code>ids, vertices_to_run, graph = await build_graph_and_get_order()</code>:</strong></p>
+    <pre># Vì user chọn "Run from beginning" với start_component_id,
+# tất cả upstream vertices cần được clear cache để rebuild
+chat_service = get_chat_service()
+if chat_service is not None:
+    for vid in ids:
+        await chat_service.delete_cache(key=vid)
+    # Cũng clear cache của graph
+    if hasattr(chat_service, "delete_cache"):
+        await chat_service.delete_cache(key=str(flow_id))</pre>
+    <p>hoặc cách khác: clear cache cho toàn bộ flow_id thay vì từng vertex:</p>
+    <pre>chat_service = get_chat_service()
+if chat_service is not None and hasattr(chat_service, "clear_cache"):
+    await chat_service.clear_cache()
+    # hoặc clear theo prefix/pattern</pre>
+  </div>
+
+  <h2>6. Scope boundary</h2>
+  <div class="scope-section">
+    <div class="card">
+      <h3 style="color: #4ade80; margin-top: 0;">✅ Trong scope</h3>
+      <ul>
+        <li>Xoá cache của các vertex upstream trước khi build</li>
+        <li>Chỉ áp dụng cho "Run from beginning" (không ảnh hưởng incremental run)</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3 style="color: #f87171; margin-top: 0;">❌ Ngoài scope</h3>
+      <ul>
+        <li>Sửa frontend UI</li>
+        <li>Sửa cơ chế cache service</li>
+        <li>Thay đổi graph execution engine</li>
+        <li>Các component khác</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>7. Các bước thực hiện (qcode)</h2>
+  <ol>
+    <li>Đọc <code>chat_service</code> interface để biết method xoá cache (có thể là <code>delete_cache</code>, <code>clear_cache</code>, <code>invalidate</code>)</li>
+    <li>Sửa <code>generate_flow_events()</code> trong <span class="file-path">build.py</span> — thêm clear cache cho các vertex trước khi build</li>
+    <li>Kiểm tra với flow A → B: chạy lần 1, chạy lại "Run from beginning" lần 2 → cả A và B đều phải rebuild</li>
+  </ol>
+</div>
+</body>
+</html>

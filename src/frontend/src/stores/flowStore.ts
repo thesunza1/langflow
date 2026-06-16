@@ -822,7 +822,7 @@ const useFlowStore = create<FlowStoreType>((set, get) => ({
     });
     const playgroundPage = get().playgroundPage;
     get().setIsBuilding(true);
-    set({ flowBuildStatus: {} });
+    set({ flowBuildStatus: {}, latestRunningText: {} });
     const currentFlow = useFlowsManagerStore.getState().currentFlow;
     const setErrorData = useAlertStore.getState().setErrorData;
 
@@ -1223,6 +1223,15 @@ const useFlowStore = create<FlowStoreType>((set, get) => ({
       }
     });
     set({ flowBuildStatus: newFlowBuildStatus });
+  },
+  setLatestRunningText: (nodeId: string, text: string) => {
+    set((state) => {
+      const prev = state.latestRunningText[nodeId] || [];
+      const next = [...prev, text].slice(-50); // keep last 20 lines
+      return {
+        latestRunningText: { ...state.latestRunningText, [nodeId]: next },
+      };
+    });
   },
   revertBuiltStatusFromBuilding: () => {
     const newFlowBuildStatus = { ...get().flowBuildStatus };

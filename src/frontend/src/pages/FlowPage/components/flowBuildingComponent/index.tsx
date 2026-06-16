@@ -37,6 +37,7 @@ export default function FlowBuildingComponent() {
     (state) => state.pastBuildFlowParams,
   );
   const buildFlow = useFlowStore((state) => state.buildFlow);
+  const latestRunningText = useFlowStore((state) => state.latestRunningText);
   const statusBuilding = useMemo(
     () =>
       Object.entries(flowBuildStatus)
@@ -84,16 +85,32 @@ export default function FlowBuildingComponent() {
 
   const buildingContent = useMemo(() => {
     if (!isBuilding) return null;
+    const nodeId = statusBuilding.length > 0 ? statusBuilding[0]?.id : null;
+    const lines: string[] = nodeId ? latestRunningText[nodeId] || [] : [];
+    // Show last 3 lines (or fewer if not enough)
+    const recentLines = lines.slice(-8);
     return (
-      <TextShimmer duration={1}>
-        {statusBuilding.length > 0
-          ? t("flowBuild.runningNode", {
-              id: getRunningNodeLabel(statusBuilding[0]?.id),
-            })
-          : t("flowBuild.runningFlow")}
-      </TextShimmer>
+      <div className="flex flex-col gap-0.5 min-w-0 max-w-[600px]">
+        <TextShimmer duration={1}>
+          {nodeId
+            ? t("flowBuild.runningNode", {
+                id: getRunningNodeLabel(nodeId),
+              })
+            : t("flowBuild.runningFlow")}
+        </TextShimmer>
+        <div className="flex flex-col gap-0">
+          {recentLines.map((line, i) => (
+            <span
+              key={i}
+              className="truncate text-xs text-muted-foreground leading-5"
+            >
+              {line}
+            </span>
+          ))}
+        </div>
+      </div>
     );
-  }, [isBuilding, statusBuilding]);
+  }, [isBuilding, statusBuilding, latestRunningText]);
 
   useEffect(() => {
     if (buildInfo?.success) {
@@ -124,7 +141,7 @@ export default function FlowBuildingComponent() {
   return (
     <AnimatePresence mode="wait">
       {(isBuilding || buildInfo?.error || buildInfo?.success) && !dismissed && (
-        <div className="absolute bottom-16 left-1/2 z-50 w-[530px] -translate-x-1/2">
+        <div className="absolute bottom-16 left-1/2 z-50 w-[900px] -translate-x-1/2">
           <motion.div
             initial="hidden"
             animate="visible"

@@ -342,11 +342,11 @@ export const SIDEBAR_CATEGORIES = [
   //   name: "files_and_knowledge",
   //   icon: "Layers",
   // },
-  {
-    display_name: "sidebar.category.processing",
-    name: "processing",
-    icon: "ListFilter",
-  },
+  // {
+  //   display_name: "sidebar.category.processing",
+  //   name: "processing",
+  //   icon: "ListFilter",
+  // },
   {
     display_name: "sidebar.category.flowControl",
     name: "flow_controls",

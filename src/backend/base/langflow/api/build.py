@@ -664,6 +664,15 @@ async def generate_flow_events(
         )
         _build_job_svc = None
 
+    # Clear cached vertex results so all upstream vertices are fully rebuilt
+    # rather than returning stale 0ms results from a previous run.
+    if chat_service is not None and hasattr(chat_service, "clear_cache"):
+        for vid in vertices_to_run:
+            try:
+                await chat_service.clear_cache(key=vid)
+            except Exception:
+                logger.exception(f"Failed to clear cache for vertex {vid}")
+
     event_manager.on_vertices_sorted(data={"ids": ids, "to_run": vertices_to_run})
 
     vertex_timedeltas: list[float] = []
