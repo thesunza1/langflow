@@ -528,6 +528,8 @@ export const SIDEBAR_BUNDLES = [
   { display_name: "Yahoo! Finance", name: "yahoosearch", icon: "trending-up" },
   { display_name: "YouTube", name: "youtube", icon: "YouTube" },
   { display_name: "Zep", name: "zep", icon: "ZepMemory" },
+  { display_name: "OCR Paddle", name: "paddleocr", icon: "file-text" },
+  { display_name: "VL Images", name: "vlimages", icon: "image" },
 ];
 
 export const categoryIcons: Record<string, string> = {

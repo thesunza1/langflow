@@ -1,0 +1,42 @@
+[project]
+name = "lfx-vlimages"
+version = "0.1.0"
+description = "VL Images component using Qwen3.5-2B VLM via vLLM for image description."
+readme = "README.md"
+requires-python = ">=3.10,<3.15"
+license = { text = "MIT" }
+authors = [
+    { name = "Langflow", email = "contact@langflow.org" },
+]
+keywords = ["langflow", "lfx", "extension", "bundle", "vllm", "vision", "image"]
+
+dependencies = [
+    "lfx>=1.10.0.dev0,<2.0.0",
+    "langchain-openai>=0.3.0",
+    "openai>=1.60.0",
+    "pillow>=10.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/langflow-ai/langflow"
+Documentation = "https://docs.langflow.org/bundles-vlimages"
+Repository = "https://github.com/langflow-ai/langflow"
+
+[project.entry-points."langflow.extensions"]
+lfx-vlimages = "lfx_vlimages"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/lfx_vlimages"]
+include = ["src/lfx_vlimages/extension.json", "src/lfx_vlimages/components/**/*.py"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/lfx_vlimages",
+    "extension.json",
+    "README.md",
+    "pyproject.toml",
+]

@@ -375,3 +375,11 @@ Start Langflow with the built frontend for better performance (no Vite HMR, no R
 
 At the end of every answer, append the phrase: (còn nhớ AGENTS.md)
 This reminds both the user and the agent to refer back to this document for context.
+
+### Opening qplan files
+
+Always open qplan HTML files using the `file://` protocol to ensure browser compatibility:
+```bash
+xdg-open "file:///absolute/path/to/qplan/<feature-name>.html"
+```
+

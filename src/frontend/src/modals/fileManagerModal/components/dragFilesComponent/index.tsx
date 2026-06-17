@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import ForwardedIconComponent from "@/components/common/genericIconComponent";
 import ShadTooltip from "@/components/common/shadTooltipComponent";
@@ -166,6 +166,50 @@ export default function DragFilesComponent({
       }
     }
   };
+
+  // Handle paste events to upload files from clipboard
+  const uploadFilesRef = useRef(uploadFiles);
+  const onUploadRef = useRef(onUpload);
+  uploadFilesRef.current = uploadFiles;
+  onUploadRef.current = onUpload;
+
+  const handlePaste = async (event: ClipboardEvent) => {
+    // Only handle paste when the file manager modal is active
+    const modal = (event.target as HTMLElement)?.closest('[role="dialog"]');
+    if (!modal) return;
+
+    const items = event.clipboardData?.items;
+    if (!items) return;
+
+    for (let i = 0; i < items.length; i++) {
+      const file = items[i].getAsFile();
+      if (file) {
+        event.preventDefault();
+        try {
+          const filesIds = await uploadFilesRef.current({ files: [file] });
+          if (filesIds.length > 0) {
+            onUploadRef.current(filesIds);
+            setSuccessData({
+              title: t("fileManager.fileUploadedSuccessfully"),
+            });
+          }
+        } catch (error: any) {
+          setErrorData({
+            title: t("fileManager.errorUploadingFile"),
+            list: [error.message || t("fileManager.errorUploadingFileDetail")],
+          });
+        }
+        return;
+      }
+    }
+  };
+
+  useEffect(() => {
+    document.addEventListener("paste", handlePaste);
+    return () => {
+      document.removeEventListener("paste", handlePaste);
+    };
+  }, []);
 
   const handleSelectFolder = async () => {
     try {

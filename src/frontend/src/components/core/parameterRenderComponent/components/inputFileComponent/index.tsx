@@ -1,8 +1,10 @@
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { ICON_STROKE_WIDTH } from "@/constants/constants";
-import { useGetFilesV2 } from "@/controllers/API/queries/file-management";
-import { usePostUploadFile } from "@/controllers/API/queries/files/use-post-upload-file";
+import {
+  useGetFilesV2,
+  usePostUploadFileV2,
+} from "@/controllers/API/queries/file-management";
 import { ENABLE_FILE_MANAGEMENT } from "@/customization/feature-flags";
 import { createFileUpload } from "@/helpers/create-file-upload";
 import FileManagerModal from "@/modals/fileManagerModal";
@@ -37,6 +39,93 @@ export default function InputFileComponent({
   const setErrorData = useAlertStore((state) => state.setErrorData);
   const { validateFileSize } = useFileSizeValidator();
 
+  // Handle file upload from clipboard paste
+  const uploadFile = useCallback(
+    (file: File) => {
+      if (!checkFileType(file.name)) {
+        setErrorData({
+          title: t("errors.invalidFile"),
+          list: [fileTypes?.join(", ") || ""],
+        });
+        return;
+      }
+
+      try {
+        validateFileSize(file);
+      } catch (e) {
+        if (e instanceof Error) {
+          setErrorData({ title: e.message });
+        }
+        return;
+      }
+
+      mutateAsync(
+        { file },
+        {
+          onError: (error) => {
+            console.error(t("errors.uploadFile"));
+            setErrorData({
+              title: t("errors.upload"),
+              list: [error.response?.data?.detail],
+            });
+          },
+        },
+      ).then((data) => {
+        if (data) {
+          handleOnNewValue({
+            value: isList ? [data.name ?? file.name] : (data.name ?? file.name),
+            file_path: isList ? [data.path] : data.path,
+          });
+        }
+      });
+    },
+    [
+      fileTypes,
+      handleOnNewValue,
+      isList,
+      mutateAsync,
+      setErrorData,
+      t,
+      validateFileSize,
+    ],
+  );
+
+  const handleFileChange = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement> | ClipboardEvent) => {
+      if ("clipboardData" in event) {
+        // Nếu modal đang mở, để DragFilesComponent xử lý (tránh duplicate upload)
+        const dialog = (event.target as HTMLElement)?.closest(
+          '[role="dialog"]',
+        );
+        if (dialog) return;
+        const items = event.clipboardData?.items;
+        if (!items) {
+          return;
+        }
+
+        for (let i = 0; i < items.length; i++) {
+          const file = items[i].getAsFile();
+          if (file) {
+            uploadFile(file);
+            return;
+          }
+        }
+
+        return;
+      }
+    },
+    [uploadFile],
+  );
+
+  // Listen for paste events on the document
+  useEffect(() => {
+    if (disabled) return;
+    document.addEventListener("paste", handleFileChange as EventListener);
+    return () => {
+      document.removeEventListener("paste", handleFileChange as EventListener);
+    };
+  }, [disabled, handleFileChange]);
+
   // Clear component state
   useEffect(() => {
     if (disabled && value.length !== 0) {
@@ -54,7 +143,7 @@ export default function InputFileComponent({
     return fileTypes.includes(fileExtension || "");
   }
 
-  const { mutateAsync, isPending } = usePostUploadFile();
+  const { mutateAsync, isPending } = usePostUploadFileV2();
 
   const handleButtonClick = (): void => {
     createFileUpload({
@@ -107,8 +196,8 @@ export default function InputFileComponent({
                     },
                   );
                   resolve({
-                    file_name: file.name,
-                    file_path: data.file_path,
+                    file_name: data.name ?? file.name,
+                    file_path: data.path,
                   });
                 } catch {
                   resolve(null);

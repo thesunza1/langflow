@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QR Plan - PaddleOCR & VL Images Components</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f7; color: #1d1d1f; line-height: 1.6; }
+  .container { max-width: 1100px; margin: 0 auto; padding: 40px 24px; }
+  h1 { font-size: 2.2rem; font-weight: 700; margin-bottom: 8px; letter-spacing: -0.02em; }
+  h1 span { color: #6c5ce7; }
+  .subtitle { font-size: 1.05rem; color: #6e6e73; margin-bottom: 40px; }
+  .meta-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 40px; }
+  .meta-item { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+  .meta-label { font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: #8e8e93; margin-bottom: 4px; }
+  .meta-value { font-size: .95rem; font-weight: 500; }
+  section { background: #fff; border-radius: 16px; padding: 32px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+  h2 { font-size: 1.4rem; font-weight: 700; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
+  h2 .badge { font-size: .7rem; font-weight: 600; background: #6c5ce7; color: #fff; border-radius: 20px; padding: 2px 12px; }
+  h3 { font-size: 1.1rem; font-weight: 600; margin: 20px 0 10px; }
+  h4 { font-size: .95rem; font-weight: 600; margin: 16px 0 8px; color: #6e6e73; }
+  p, li { font-size: .95rem; color: #3a3a3c; }
+  ul, ol { padding-left: 24px; margin: 8px 0; }
+  li { margin-bottom: 4px; }
+  code { background: #f0f0f5; font-size: .85rem; padding: 2px 6px; border-radius: 4px; font-family: 'SF Mono', monospace; }
+  pre { background: #1d1d1f; color: #f0f0f5; border-radius: 10px; padding: 16px; overflow-x: auto; font-size: .82rem; line-height: 1.5; margin: 12px 0; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .req-table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+  .req-table th { text-align: left; background: #f5f5f7; font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; color: #6e6e73; padding: 10px 12px; font-weight: 600; }
+  .req-table td { padding: 10px 12px; border-bottom: 1px solid #eaeaea; font-size: .9rem; }
+  .req-table tr:last-child td { border: none; }
+  .wireframe { background: #fafafa; border: 2px dashed #d4d4d8; border-radius: 12px; padding: 24px; margin: 16px 0; }
+  .flow-box { background: #fff; border: 1px solid #e4e4e7; border-radius: 8px; padding: 16px; margin: 8px 0; display: inline-block; min-width: 120px; text-align: center; font-weight: 500; font-size: .85rem; }
+  .flow-arrow { text-align: center; color: #6e6e73; font-size: 1.2rem; padding: 4px 0; }
+  .tag { display: inline-block; font-size: .7rem; font-weight: 600; padding: 2px 8px; border-radius: 4px; margin: 0 4px; }
+  .tag-be { background: #e0f2fe; color: #0369a1; }
+  .tag-fe { background: #fae8ff; color: #a21caf; }
+  .tag-both { background: #dbeafe; color: #1d4ed8; }
+  .scope-in { background: #dcfce7; color: #166534; }
+  .scope-out { background: #fce7f3; color: #9f1239; }
+  @media (max-width: 700px) { .grid-2 { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>🛠️ QR Plan: <span>PaddleOCR & VL Images</span></h1>
+<p class="subtitle">Two new Langflow bundles for OCR document processing and vision-language image description</p>
+
+<div class="meta-grid">
+  <div class="meta-item"><div class="meta-label">Status</div><div class="meta-value">📋 Plan (qplan)</div></div>
+  <div class="meta-item"><div class="meta-label">Components</div><div class="meta-value">2</div></div>
+  <div class="meta-item"><div class="meta-label">Bundle type</div><div class="meta-value">langflow bundle</div></div>
+  <div class="meta-item"><div class="meta-label">Engine</div><div class="meta-value">PaddleOCR + vLLM</div></div>
+  <div class="meta-item"><div class="meta-label">Date</div><div class="meta-value">2026-06-17</div></div>
+</div>
+
+<!-- ============================ OVERVIEW ============================ -->
+<section>
+<h2>1. Tổng quan <span class="badge">Scope</span></h2>
+<p>Tạo <strong>2 component</strong> mới dạng Langflow bundle trong thư mục <code>src/bundles/</code>, mỗi component nằm trong bundle riêng:</p>
+<ul>
+  <li><strong>OCR Paddle</strong> (<code>src/bundles/paddleocr/</code>) — OCR đa ảnh dùng PaddleOCR + PP-DocLayoutV3, xuất ra Markdown</li>
+  <li><strong>VL Images</strong> (<code>src/bundles/vlimages/</code>) — Mô tả ảnh dùng Qwen3.5-2B chạy trên vLLM, xuất ra Markdown</li>
+</ul>
+<p>Cả hai component đều hoạt động offline, chạy model trên máy local, không gọi API cloud.</p>
+</section>
+
+<!-- ============================ SRS OCR PADDLE ============================ -->
+<section>
+<h2>2. SRS — OCR Paddle Component</h2>
+
+<h3>2.1 Mục đích</h3>
+<p>Cho phép người dùng upload hoặc paste nhiều ảnh, component sẽ dùng <strong>PaddleOCR</strong> để nhận dạng chữ (text detection + recognition) kết hợp <strong>PP-DocLayoutV3</strong> để phân tích layout (tiêu đề, đoạn văn, bảng biểu, hình ảnh), sau đó tổng hợp thành văn bản Markdown có cấu trúc.</p>
+
+<h3>2.2 Công nghệ nền tảng</h3>
+<ul>
+  <li><strong>PaddleOCR</strong> (<code>paddleocr</code> package) — text detection + recognition engine</li>
+  <li><strong>PP-DocLayoutV3</strong> — document layout analysis model (safetensors từ HuggingFace)</li>
+  <li><strong>Output format:</strong> Markdown (có cấu trúc heading, paragraph, list, code block, table)</li>
+</ul>
+
+<h3>2.3 Functional Requirements</h3>
+<table class="req-table">
+  <tr><th>#</th><th>Requirement</th><th>Priority</th></tr>
+  <tr><td>FR-01</td><td>Cho phép upload nhiều file ảnh cùng lúc (JPG, PNG, BMP, TIFF, WEBP) qua FileInput <code>is_list=True</code></td><td>P0</td></tr>
+  <tr><td>FR-02</td><td>Cho phép paste ảnh từ clipboard (base64 string input)</td><td>P1</td></tr>
+  <tr><td>FR-03</td><td>Chạy PaddleOCR text detection để phát hiện vùng chữ trong ảnh</td><td>P0</td></tr>
+  <tr><td>FR-04</td><td>Chạy PaddleOCR text recognition để nhận dạng ký tự từ các vùng đã detect</td><td>P0</td></tr>
+  <tr><td>FR-05</td><td>Chạy PP-DocLayoutV3 để phân tích layout document (title, paragraph, table, figure, header, footer, footnote, caption, equation, list)</td><td>P0</td></tr>
+  <tr><td>FR-06</td><td>Kết hợp OCR text + layout analysis → tái tạo cấu trúc document dạng Markdown</td><td>P0</td></tr>
+  <tr><td>FR-07</td><td>Output là <code>Message</code> (text markdown) — mỗi ảnh cho ra 1 message riêng hoặc DataFrame tổng hợp</td><td>P0</td></tr>
+  <tr><td>FR-08</td><td>Hỗ trợ tùy chọn ngôn ngữ OCR — Auto (tự detect), Chinese (ch), English (en), Vietnamese (vi), Japanese (japan), Korean (korean), French (fr), German (german)</td><td>P0</td></tr>
+  <tr><td>FR-09</td><td>Show progress/log khi xử lý (log mỗi file)</td><td>P2</td></tr>
+  <tr><td>FR-10</td><td>Timeout configurable (mặc định 300s cho mỗi ảnh)</td><td>P2</td></tr>
+  <tr><td>FR-11</td><td>Chế độ "Auto": chạy OCR với nhiều ngôn ngữ phổ biến và chọn kết quả có confidence cao nhất (tự động detect ngôn ngữ)</td><td>P1</td></tr>
+</table>
+
+<h3>2.4 Non-functional Requirements</h3>
+<ul>
+  <li><strong>NFR-01 (Isolation):</strong> PaddleOCR (PyTorch) chạy trong subprocess riêng, giống pattern Docling <code>_CHILD_SCRIPT</code> trong file.py — tránh OOM trên main process</li>
+  <li><strong>NFR-02 (Memory):</strong> Giải phóng model sau mỗi lần xử lý để tránh rò rỉ GPU memory</li>
+  <li><strong>NFR-03 (Batch):</strong> Xử lý nhiều ảnh tuần tự để kiểm soát memory</li>
+  <li><strong>NFR-04 (Dependency):</strong> <code>paddleocr >= 2.8</code> trong <code>dependencies</code> của bundle</li>
+</ul>
+
+<h3>2.5 Input / Output Schema</h3>
+<pre>Inputs:
+  - images: FileInput (is_list=True, file_types=["png","jpg","jpeg","bmp","tiff","webp"])
+  - paste_images: StrInput (base64 encoded image strings, advanced, tool_mode)
+  - lang: DropdownInput (ngôn ngữ OCR, options=["Auto","chinese","english","vietnamese","japanese","korean","french","german"], value="Auto")
+  - timeout: IntInput (timeout per image, default=300, advanced)
+
+Outputs:
+  - markdown_output: Output (method="process_images", types=["Message"])  → nội dung Markdown
+  - DataFrame: Output (method="process_images_dataframe")                → bảng kết quả</pre>
+
+<h3>2.6 User Interaction Flow</h3>
+<div class="wireframe">
+  <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
+    <div class="flow-box">📤 Upload ảnh<br><span style="font-size:.7rem;color:#8e8e93;">(FileInput)</span></div>
+    <div class="flow-arrow">⬇</div>
+    <div class="flow-box">📸 Paste ảnh<br><span style="font-size:.7rem;color:#8e8e93;">(base64 string)</span></div>
+    <div class="flow-arrow">⬇</div>
+    <div class="flow-box" style="background:#faf5ff;border-color:#a78bfa;">🔍 PaddleOCR<br><span style="font-size:.7rem;">text detection + recognition</span></div>
+    <div class="flow-arrow">⬇</div>
+    <div class="flow-box" style="background:#faf5ff;border-color:#a78bfa;">📐 PP-DocLayoutV3<br><span style="font-size:.7rem;">layout analysis (title, table, figure...)</span></div>
+    <div class="flow-arrow">⬇</div>
+    <div class="flow-box" style="background:#ecfdf5;border-color:#34d399;">📝 Markdown Builder<br><span style="font-size:.7rem;">sắp xếp text theo layout → Markdown</span></div>
+    <div class="flow-arrow">⬇</div>
+    <div class="flow-box">📄 Output: Message (Markdown)</div>
+  </div>
+</div>
+
+<h3>2.7 Wireframe UI</h3>
+<div class="wireframe">
+  <div style="border:1px solid #e4e4e7; border-radius:8px; overflow:hidden;">
+    <div style="background:#fafafa; padding:12px 16px; border-bottom:1px solid #e4e4e7; font-weight:600; font-size:.9rem;">
+      <span style="color:#6c5ce7;">◆</span> OCR Paddle
+    </div>
+    <div style="padding:16px; display:grid; gap:14px;">
+      <div>
+        <div style="font-size:.8rem; font-weight:600; color:#6e6e73; margin-bottom:4px;">📎 Images</div>
+        <div style="border:2px dashed #d4d4d8; border-radius:8px; padding:20px; text-align:center; color:#8e8e93; font-size:.85rem;">
+          + Drop files here or click to upload<br>
+          <span style="font-size:.7rem;">PNG, JPG, BMP, TIFF, WEBP (multiple allowed)</span>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:.8rem; font-weight:600; color:#6e6e73; margin-bottom:4px;">📋 Or paste base64 images</div>
+        <div style="border:1px solid #d4d4d8; border-radius:6px; padding:10px; background:#fafafa; font-size:.8rem; color:#8e8e93;">Paste image data here...</div>
+      </div>
+      <div style="display:flex; gap:12px;">
+        <div style="flex:1;">
+          <div style="font-size:.8rem; font-weight:600; color:#6e6e73; margin-bottom:4px;">🌐 Language</div>
+          <div style="border:1px solid #d4d4d8; border-radius:6px; padding:8px; font-size:.85rem; background:#fff;">Auto (tự detect) ▾</div>
+        </div>
+        <div style="flex:1;">
+          <div style="font-size:.8rem; font-weight:600; color:#6e6e73; margin-bottom:4px;">⏱ Timeout (s)</div>
+          <div style="border:1px solid #d4d4d8; border-radius:6px; padding:8px; font-size:.85rem; background:#fff;">300</div>
+        </div>
+      </div>
+      <div style="display:flex; gap:8px; justify-content:flex-end; padding-top:4px;">
+        <span style="border:1px solid #d4d4d8; border-radius:6px; padding:6px 16px; font-size:.85rem; color:#8e8e93;">Reset</span>
+        <span style="background:#6c5ce7; color:#fff; border-radius:6px; padding:6px 16px; font-size:.85rem; font-weight:500;">Process</span>
+      </div>
+    </div>
+  </div>
+  <div style="border:1px solid #e4e4e7; border-radius:8px; margin-top:12px; overflow:hidden;">
+    <div style="background:#fafafa; padding:12px 16px; border-bottom:1px solid #e4e4e7; font-weight:600; font-size:.9rem;">📄 Markdown Output</div>
+    <div style="padding:16px; font-size:.82rem; font-family:'SF Mono', monospace; white-space:pre-wrap; color:#3a3a3c; background:#fafafa; min-height:100px; border-radius:0 0 8px 8px;">
+# Document Title
+
+This is a paragraph of recognized text from the image...
+
+## Section 1
+
+| Column A | Column B |
+|----------|----------|
+| Data 1   | Data 2   |
+
+- List item 1
+- List item 2
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- ============================ SRS VL IMAGES ============================ -->
+<section>
+<h2>3. SRS — VL Images Component</h2>
+
+<h3>3.1 Mục đích</h3>
+<p>Cho phép người dùng upload nhiều ảnh, component dùng <strong>Qwen3.5-2B</strong> (VL model) chạy trên <strong>vLLM</strong> để mô tả nội dung từng ảnh và trả về kết quả dạng Markdown.</p>
+
+<h3>3.2 Công nghệ nền tảng</h3>
+<ul>
+  <li><strong>Model:</strong> <code>unsloth/Qwen3.5-2B-MTP-GGUF</code> (file: Qwen3.5-2B-UD-IQ2_M.gguf)</li>
+  <li><strong>Engine:</strong> vLLM (OpenAI-compatible API) — tận dụng <code>VllmComponent</code> có sẵn</li>
+  <li><strong>Quantization:</strong> Q4_0 (4-bit)</li>
+  <li><strong>Context window:</strong> 50K tokens</li>
+  <li><strong>Max output:</strong> 2000 tokens</li>
+  <li><strong>Mode:</strong> no-think (disable reasoning/thinking tokens)</li>
+  <li><strong>Output format:</strong> Markdown</li>
+</ul>
+
+<h3>3.3 Functional Requirements</h3>
+<table class="req-table">
+  <tr><th>#</th><th>Requirement</th><th>Priority</th></tr>
+  <tr><td>FR-VL-01</td><td>Upload nhiều ảnh cùng lúc (JPG, PNG, WEBP) qua FileInput <code>is_list=True</code></td><td>P0</td></tr>
+  <tr><td>FR-VL-02</td><td>Paste ảnh từ clipboard dạng base64 string</td><td>P1</td></tr>
+  <tr><td>FR-VL-03</td><td>Kết nối đến vLLM server (OpenAI-compatible) — user tự start vLLM server riêng</td><td>P0</td></tr>
+  <tr><td>FR-VL-04</td><td>Cấu hình: model name, api_base, api_key, temperature, max_tokens=2000</td><td>P0</td></tr>
+  <tr><td>FR-VL-05</td><td>Context window mặc định 50K tokens (model supports max 128K, set <code>max_model_len=50000</code>)</td><td>P0</td></tr>
+  <tr><td>FR-VL-06</td><td>No-think mode: disable reasoning tokens bằng system prompt hoặc <code>skip_special_tokens</code></td><td>P0</td></tr>
+  <tr><td>FR-VL-07</td><td>Mỗi ảnh → 1 mô tả Markdown (heading với tên file, nội dung description)</td><td>P0</td></tr>
+  <tr><td>FR-VL-08</td><td>Output là <code>Message</code> (text Markdown) tổng hợp tất cả ảnh hoặc DataFrame riêng từng ảnh</td><td>P0</td></tr>
+  <tr><td>FR-VL-09</td><td>Custom prompt cho phép user tùy chỉnh instruction cho VLM</td><td>P1</td></tr>
+  <tr><td>FR-VL-10</td><td>Batch processing với progress log</td><td>P2</td></tr>
+</table>
+
+<h3>3.4 Non-functional Requirements</h3>
+<ul>
+  <li><strong>NFR-VL-01:</strong> Không giữ model trong memory — dùng OpenAI-compatible API qua HTTP</li>
+  <li><strong>NFR-VL-02:</strong> Kế thừa pattern từ <code>VllmComponent</code> (langchain_openai ChatOpenAI)</li>
+  <li><strong>NFR-VL-03:</strong> Timeout configurable cho mỗi request</li>
+  <li><strong>NFR-VL-04:</strong> Hỗ trợ system prompt tùy chỉnh để control output format</li>
+</ul>
+
+<h3>3.5 vLLM Server Setup Instructions (user cần chạy trước)</h3>
+<pre># User self-starts vLLM server trước khi dùng component
+vllm serve unsloth/Qwen3.5-2B-MTP-GGUF \
+  --quantization gguf \
+  --max-model-len 50000 \
+  --max-num-seqs 4 \
+  --port 8000 \
+  --trust-remote-code
+
+# Component sẽ connect tới: http://localhost:8000/v1</pre>
+
+<h3>3.6 Input / Output Schema</h3>
+<pre>Inputs:
+  - images: FileInput (is_list=True, file_types=["png","jpg","jpeg","webp"])
+  - paste_images: StrInput (base64 encoded images, advanced, tool_mode)
+  - model_name: StrInput (default="unsloth/Qwen3.5-2B-MTP-GGUF")
+  - api_base: StrInput (default="http://localhost:8000/v1")
+  - api_key: SecretStrInput (optional, default="")
+  - temperature: SliderInput (0.0-1.0, default=0.1, advanced)
+  - max_tokens: IntInput (default=2000, advanced)
+  - max_model_len: IntInput (default=50000, advanced)
+  - system_prompt: StrInput (advanced, user prompt để mô tả ảnh)
+  - no_think_mode: BoolInput (default=True, advanced)
+
+Outputs:
+  - markdown_output: Output (method="describe_images", types=["Message"])
+  - DataFrame: Output (method="describe_images_dataframe")</pre>
+
+<h3>3.7 User Interaction Flow</h3>
+<div class="wireframe">
+  <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
+    <div class="flow-box">📤 Upload ảnh<br><span style="font-size:.7rem;color:#8e8e93;">(FileInput list)</span></div>
+    <div class="flow-arrow">⬇</div>
+    <div class="flow-box">🖼 Convert ảnh → base64<br><span style="font-size:.7rem;">(VLM format)</span></div>
+    <div class="flow-arrow">⬇</div>
+    <div class="flow-box" style="background:#faf5ff;border-color:#a78bfa;">🤖 vLLM API<br><span style="font-size:.7rem;">Qwen3.5-2B + Q4_0</span></div>
+    <div class="flow-arrow" style="font-size:.9rem;">system prompt "no-think" + 50K ctx + 2000 tokens</div>
+    <div class="flow-box" style="background:#ecfdf5;border-color:#34d399;">📝 Markdown Builder<br><span style="font-size:.7rem;">tổng hợp mô tả từng ảnh</span></div>
+    <div class="flow-arrow">⬇</div>
+    <div class="flow-box">📄 Output: Message (Markdown)</div>
+  </div>
+</div>
+
+<h3>3.8 Wireframe UI</h3>
+<div class="wireframe">
+  <div style="border:1px solid #e4e4e7; border-radius:8px; overflow:hidden;">
+    <div style="background:#fafafa; padding:12px 16px; border-bottom:1px solid #e4e4e7; font-weight:600; font-size:.9rem;">
+      <span style="color:#0891b2;">◆</span> VL Images
+    </div>
+    <div style="padding:16px; display:grid; gap:14px;">
+      <div>
+        <div style="font-size:.8rem; font-weight:600; color:#6e6e73; margin-bottom:4px;">🖼 Images</div>
+        <div style="border:2px dashed #d4d4d8; border-radius:8px; padding:20px; text-align:center; color:#8e8e93; font-size:.85rem;">
+          + Drop images here or click to upload<br>
+          <span style="font-size:.7rem;">PNG, JPG, WEBP (multiple allowed)</span>
+        </div>
+      </div>
+      <div style="display:flex; gap:12px;">
+        <div style="flex:2;">
+          <div style="font-size:.8rem; font-weight:600; color:#6e6e73; margin-bottom:4px;">🤖 Model Name</div>
+          <div style="border:1px solid #d4d4d8; border-radius:6px; padding:8px; font-size:.82rem; background:#fff;">unsloth/Qwen3.5-2B-MTP-GGUF</div>
+        </div>
+        <div style="flex:1;">
+          <div style="font-size:.8rem; font-weight:600; color:#6e6e73; margin-bottom:4px;">🌡 Temp</div>
+          <div style="border:1px solid #d4d4d8; border-radius:6px; padding:8px; font-size:.82rem; background:#fff;">0.1</div>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:.8rem; font-weight:600; color:#6e6e73; margin-bottom:4px;">🔗 vLLM API Base</div>
+        <div style="border:1px solid #d4d4d8; border-radius:6px; padding:8px; font-size:.82rem; background:#fff;">http://localhost:8000/v1</div>
+      </div>
+      <div style="display:flex; gap:8px; justify-content:flex-end; padding-top:4px;">
+        <span style="border:1px solid #d4d4d8; border-radius:6px; padding:6px 16px; font-size:.85rem; color:#8e8e93;">Reset</span>
+        <span style="background:#0891b2; color:#fff; border-radius:6px; padding:6px 16px; font-size:.85rem; font-weight:500;">Describe</span>
+      </div>
+    </div>
+  </div>
+  <div style="border:1px solid #e4e4e7; border-radius:8px; margin-top:12px; overflow:hidden;">
+    <div style="background:#fafafa; padding:12px 16px; border-bottom:1px solid #e4e4e7; font-weight:600; font-size:.9rem;">📄 Markdown Description</div>
+    <div style="padding:16px; font-size:.82rem; font-family:'SF Mono', monospace; white-space:pre-wrap; color:#3a3a3c; background:#fafafa; min-height:80px;">
+## photo_1.jpg
+This image shows a modern office space with multiple workstations...
+
+## diagram_2.png
+The diagram illustrates a neural network architecture with...
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- ============================ ARCHITECTURE ============================ -->
+<section>
+<h2>4. Kiến trúc Bundle</h2>
+
+<h3>4.1 Cấu trúc thư mục</h3>
+<pre>src/bundles/
+├── paddleocr/                        # Bundle 1: OCR Paddle
+│   ├── pyproject.toml                # Package metadata + dependencies
+│   ├── lfx.toml                      # Plugin registration
+│   └── src/
+│       └── lfx_paddleocr/
+│           ├── __init__.py
+│           └── components/
+│               ├── __init__.py
+│               └── paddleocr/
+│                   ├── __init__.py
+│                   └── ocr_paddle.py      # OCR Paddle Component
+├── vlimages/                         # Bundle 2: VL Images
+│   ├── pyproject.toml                # Package metadata + dependencies
+│   ├── lfx.toml                      # Plugin registration
+│   └── src/
+│       └── lfx_vlimages/
+│           ├── __init__.py
+│           └── components/
+│               ├── __init__.py
+│               └── vlimages/
+│                   ├── __init__.py
+│                   └── vl_images.py       # VL Images Component</pre>
+
+<h3>4.2 Bundle pattern (tham khảo bundle arxiv/docling)</h3>
+<p>Mỗi bundle có:</p>
+<ul>
+  <li><code>pyproject.toml</code> — dependencies (paddleocr / openai+langchain) + entry point</li>
+  <li><code>lfx.toml</code> — khai báo plugin cho CLI phát hiện</li>
+  <li><code>components/__init__.py</code> — export component classes</li>
+  <li><code>components/&lt;name&gt;/__init__.py</code> — import component modules</li>
+</ul>
+
+<h3>4.3 Dependencies</h3>
+<table class="req-table">
+  <tr><th>Bundle</th><th>Python packages</th><th>External</th></tr>
+  <tr><td>paddleocr</td><td><code>paddleocr&gt;=2.8</code>, <code>paddlepaddle&gt;=3.0</code>, <code>transformers</code>, <code>safetensors</code>, <code>pillow</code></td><td>PaddlePaddle framework</td></tr>
+  <tr><td>vlimages</td><td><code>langchain-openai</code>, <code>openai</code>, <code>pillow</code></td><td>vLLM server (user-managed)</td></tr>
+</table>
+
+<h3>4.4 Component Class Design (OCR Paddle)</h3>
+<pre>class OcrPaddleComponent(Component):
+    display_name = "OCR Paddle"
+    description = "OCR documents using PaddleOCR + PP-DocLayoutV3"
+    icon = "PaddleOCR"  # hoặc "file-text" tạm thời
+    name = "OcrPaddle"
+
+    inputs = [
+        FileInput(name="images", display_name="Images", file_types=[...], is_list=True),
+        StrInput(name="paste_images", display_name="Paste Images", tool_mode=True, advanced=True),
+        DropdownInput(name="lang", display_name="Language", options=["Auto","chinese","english","vietnamese","japanese","korean","french","german"], value="Auto"),
+        IntInput(name="timeout", display_name="Timeout (s)", value=300, advanced=True),
+        BoolInput(name="use_layout", display_name="Use Layout Analysis", value=True, advanced=True),
+    ]
+    outputs = [
+        Output(display_name="Markdown Output", name="markdown_output", method="process_images", types=["Message"]),
+        Output(display_name="DataFrame", name="dataframe", method="process_images_dataframe"),
+    ]
+
+    def process_images(self) -> Message: ...
+    def process_images_dataframe(self) -> DataFrame: ...</pre>
+
+<h3>4.5 Component Class Design (VL Images)</h3>
+<pre>class VLImagesComponent(Component):
+    display_name = "VL Images"
+    description = "Describe images using Qwen3.5-2B VLM via vLLM"
+    icon = "VLImages"  # hoặc "image"
+    name = "VLImages"
+
+    inputs = [
+        FileInput(name="images", display_name="Images", file_types=[...], is_list=True),
+        StrInput(name="paste_images", display_name="Paste Images", tool_mode=True, advanced=True),
+        StrInput(name="model_name", display_name="Model Name", value="unsloth/Qwen3.5-2B-MTP-GGUF"),
+        StrInput(name="api_base", display_name="vLLM API Base", value="http://localhost:8000/v1"),
+        SecretStrInput(name="api_key", display_name="API Key", required=False),
+        SliderInput(name="temperature", value=0.1, range_spec=RangeSpec(min=0, max=1, step=0.01)),
+        IntInput(name="max_tokens", value=2000, advanced=True),
+        IntInput(name="max_model_len", value=50000, advanced=True),
+        BoolInput(name="no_think_mode", value=True, advanced=True),
+        StrInput(name="system_prompt", display_name="System Prompt", advanced=True),
+    ]
+    outputs = [
+        Output(display_name="Markdown Output", name="markdown_output", method="describe_images", types=["Message"]),
+        Output(display_name="DataFrame", name="dataframe", method="describe_images_dataframe"),
+    ]
+
+    def describe_images(self) -> Message: ...
+    def describe_images_dataframe(self) -> DataFrame: ...</pre>
+</section>
+
+<!-- ============================ SCOPE ============================ -->
+<section>
+<h2>5. Scope Boundary</h2>
+
+<h3>✅ In Scope</h3>
+<ul style="list-style:none;padding:0;">
+  <li style="margin-bottom:6px;"><span class="tag scope-in">IN</span> Tạo 2 bundle mới: <code>paddleocr</code> và <code>vlimages</code></li>
+  <li style="margin-bottom:6px;"><span class="tag scope-in">IN</span> Component OCR Paddle: xử lý ảnh → PaddleOCR + PP-DocLayoutV3 → Markdown</li>
+  <li style="margin-bottom:6px;"><span class="tag scope-in">IN</span> Component VL Images: ảnh → vLLM (Qwen3.5-2B) → Markdown description</li>
+  <li style="margin-bottom:6px;"><span class="tag scope-in">IN</span> FileInput multiple ảnh (upload) + StrInput base64 (paste)</li>
+  <li style="margin-bottom:6px;"><span class="tag scope-in">IN</span> Subprocess isolation cho PaddleOCR (tránh OOM)</li>
+  <li style="margin-bottom:6px;"><span class="tag scope-in">IN</span> No-think mode cho VL model (disable reasoning tokens)</li>
+  <li style="margin-bottom:6px;"><span class="tag scope-in">IN</span> User tự start vLLM server riêng (component chỉ gọi API)</li>
+</ul>
+
+<h3>❌ Out of Scope</h3>
+<ul style="list-style:none;padding:0;">
+  <li style="margin-bottom:6px;"><span class="tag scope-out">OUT</span> Không modify bất kỳ file nào ngoài <code>src/bundles/paddleocr/</code> và <code>src/bundles/vlimages/</code></li>
+  <li style="margin-bottom:6px;"><span class="tag scope-out">OUT</span> Không sửa frontend icons, lazyIconImports, hay bất kỳ file React nào</li>
+  <li style="margin-bottom:6px;"><span class="tag scope-out">OUT</span> Không sửa <code>src/lfx/</code> hoặc core engine</li>
+  <li style="margin-bottom:6px;"><span class="tag scope-out">OUT</span> Không tự động start/stop vLLM server</li>
+  <li style="margin-bottom:6px;"><span class="tag scope-out">OUT</span> Không tải model weights tự động (user tự quản lý)</li>
+  <li style="margin-bottom:6px;"><span class="tag scope-out">OUT</span> Không hỗ trợ GPU/CPU device selection (dùng mặc định của PaddlePaddle/vLLM)</li>
+</ul>
+</section>
+
+<!-- ============================ TESTING ============================ -->
+<section>
+<h2>6. Hướng dẫn Testing</h2>
+
+<h3>6.1 OCR Paddle Tests</h3>
+<ul>
+  <li>Unit test với ảnh mẫu (file PNG nhỏ có chữ tiếng Anh/Tiếng Việt)</li>
+  <li>Test input: file upload vs base64 paste</li>
+  <li>Test edge: ảnh không có chữ, ảnh hỏng, ảnh quá lớn</li>
+  <li>Test output format: phải là Markdown hợp lệ</li>
+</ul>
+
+<h3>6.2 VL Images Tests</h3>
+<ul>
+  <li>Unit test với mock vLLM server (hoặc dùng <code>responses</code> mock HTTP)</li>
+  <li>Test input: file upload vs base64 paste</li>
+  <li>Test no-think mode: verify system prompt không chứa từ khóa think/reason</li>
+  <li>Test max_tokens truncation</li>
+  <li>Test error handling khi vLLM server không reachable</li>
+</ul>
+
+<h3>6.3 Test files location</h3>
+<pre>src/backend/tests/unit/components/bundles/
+├── test_ocr_paddle.py
+└── test_vl_images.py</pre>
+</section>
+
+<!-- ============================ IMPLEMENTATION ============================ -->
+<section>
+<h2>7. Implementation Checklist</h2>
+<ol>
+  <li><strong>QR-01:</strong> Tạo <code>src/bundles/paddleocr/</code> — pyproject.toml, lfx.toml, package skeleton</li>
+  <li><strong>QR-02:</strong> Viết <code>ocr_paddle.py</code> — component class, inputs, outputs, subprocess OCR logic</li>
+  <li><strong>QR-03:</strong> Tạo <code>src/bundles/vlimages/</code> — pyproject.toml, lfx.toml, package skeleton</li>
+  <li><strong>QR-04:</strong> Viết <code>vl_images.py</code> — component class, inputs, outputs, vLLM API calls</li>
+  <li><strong>QR-05:</strong> Viết unit tests cho cả 2 components</li>
+  <li><strong>QR-06:</strong> Run format & lint: <code>make format_backend</code></li>
+  <li><strong>QR-07:</strong> Run unit tests</li>
+</ol>
+</section>
+
+</div>
+</body>
+</html>

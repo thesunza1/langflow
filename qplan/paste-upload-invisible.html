@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QPlan - Fix Paste Upload Invisible in File List</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #1a1a2e; background: #f5f5f8; max-width: 960px; margin: 0 auto; padding: 2rem; }
+  h1 { font-size: 1.8rem; margin-bottom: 0.5rem; color: #16213e; border-bottom: 3px solid #e94560; padding-bottom: 0.5rem; }
+  h2 { font-size: 1.3rem; margin-top: 2rem; margin-bottom: 0.5rem; color: #16213e; }
+  h3 { font-size: 1.1rem; margin-top: 1.2rem; margin-bottom: 0.3rem; color: #16213e; }
+  .meta { color: #666; font-size: 0.9rem; margin-bottom: 2rem; }
+  .section { background: white; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  .badge { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
+  .badge.bug { background: #fee2e2; color: #b91c1c; }
+  .badge.fix { background: #dcfce7; color: #166534; }
+  .badge.info { background: #dbeafe; color: #1e40af; }
+  .badge.warn { background: #fef3c7; color: #92400e; }
+  pre { background: #1e293b; color: #e2e8f0; padding: 1rem; border-radius: 6px; overflow-x: auto; font-size: 0.85rem; margin: 0.75rem 0; }
+  pre.diff { padding: 0; }
+  pre.diff .line { padding: 0.15rem 1rem; display: block; }
+  pre.diff .add { background: #dcfce7; color: #166534; }
+  pre.diff .rem { background: #fee2e2; color: #b91c1c; }
+  pre.diff .ctx { background: transparent; color: #94a3b8; }
+  code { font-family: 'JetBrains Mono', 'Fira Code', monospace; background: #f1f5f9; padding: 0.1rem 0.3rem; border-radius: 3px; font-size: 0.85rem; }
+  ul, ol { padding-left: 1.5rem; margin: 0.5rem 0; }
+  ul li, ol li { margin-bottom: 0.3rem; }
+  .callout { border-left: 4px solid; padding: 0.75rem 1rem; margin: 0.75rem 0; border-radius: 4px; }
+  .callout.error { background: #fef2f2; border-color: #ef4444; }
+  .callout.success { background: #f0fdf4; border-color: #22c55e; }
+  .callout.warn { background: #fffbeb; border-color: #f59e0b; }
+  .callout.info { background: #eff6ff; border-color: #3b82f6; }
+  table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; font-size: 0.9rem; }
+  th, td { padding: 0.5rem 0.75rem; text-align: left; border-bottom: 1px solid #e2e8f0; }
+  th { background: #f8fafc; font-weight: 600; }
+  .file-link { font-family: monospace; background: #f1f5f9; padding: 0.1rem 0.3rem; border-radius: 3px; font-size: 0.85rem; }
+  .file-link.critical { background: #fee2e2; color: #b91c1c; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<h1>🔍 Paste Upload Invisible in File List</h1>
+<div class="meta">
+  <span class="badge bug">BUG</span> <strong>OCR Paddle — InputFileComponent / FileManagerModal</strong><br>
+  Ngày: 2026-06-17 &middot; Cập nhật lần cuối
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="section">
+<h2>📋 Mô tả vấn đề</h2>
+<p>Component <strong>OCR Paddle</strong> (<code>FileInput</code> với <code>temp_file=False</code>):</p>
+<ol>
+  <li>Kéo component vào canvas → OK</li>
+  <li>Click "Select Files" → mở UI tương ứng</li>
+  <li>Chọn/paste ảnh → API trả về <code>HTTP 201</code></li>
+  <li>File đã upload <strong>không hiển thị</strong> trong danh sách</li>
+</ol>
+<p>Request ghi nhận: <code>POST /api/v1/files/upload/{flow_id}</code> → <span class="badge bug">V1 API</span></p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="section">
+<h2>🔬 Phân tích chuyên sâu</h2>
+
+<h3>1. Hai API upload khác nhau</h3>
+<table>
+  <tr><th></th><th>V1 API</th><th>V2 API</th></tr>
+  <tr><td><strong>Endpoint</strong></td><td><code>POST /api/v1/files/upload/{flow_id}</code></td><td><code>POST /api/v2/files</code></td></tr>
+  <tr><td><strong>File gốc</strong></td><td><code>api/v1/endpoints.py / files.py</code></td><td><code>api/v2/files.py (upload_user_file)</code></td></tr>
+  <tr><td><strong>Response schema</strong></td><td><code>flow_id, file_path</code></td><td><code>id, name, path, size</code></td></tr>
+  <tr><td><strong>Tạo UserFile record?</strong></td><td><span class="badge bug">❌ Không</span></td><td><span class="badge success">✅ Có</span></td></tr>
+  <tr><td><strong>Dùng bởi</strong></td><td><code>usePostUploadFile</code> (v1 hook cũ)</td><td><code>usePostUploadFileV2</code> (v2 hook mới)</td></tr>
+</table>
+
+<div class="callout error">
+<strong>Hậu quả chính:</strong> V1 upload lưu file vào storage nhưng không insert bảng <code>UserFile</code>. Frontend <code>useGetFilesV2</code> gọi <code>GET /api/v2/files</code> → <code>SELECT FROM user_file WHERE user_id=...</code> → file không có trong DB → <strong>vô hình</strong>.
+</div>
+
+<h3>2. Uncommitted code attempts — đúng hướng nhưng thiếu import</h3>
+<p>Git diff cho thấy 2 file được sửa (chưa commit):</p>
+
+<div class="callout info">
+<strong>inputFileComponent/index.tsx:</strong><br>
+✅ Thêm paste handler <code>uploadFile</code> + <code>handleFileChange</code> + paste <code>useEffect</code><br>
+✅ Đổi <code>usePostUploadFile()</code> → <code>usePostUploadFileV2()</code> (chuyển sang V2 API)<br>
+<span class="badge bug">❌</span> <strong>Thiếu import</strong> <code>usePostUploadFileV2</code> → ReferenceError lúc render → component crash<br>
+<span class="badge bug">❌</span> <code>handleButtonClick</code> dùng <code>data.file_path</code> (V1 field) nhưng V2 trả về <code>data.path</code> → file_path bị <code>undefined</code>
+</div>
+
+<div class="callout success">
+<strong>dragFilesComponent/index.tsx:</strong><br>
+✅ Thêm paste handler dùng <code>useUploadFile</code> → <code>usePostUploadFileV2</code> → V2 API<Br>
+✅ Có guard <code>[role="dialog"]</code> — chỉ xử lý paste trong modal<br>
+<span class="badge info">Không cần sửa</span>
+</div>
+
+<h3>3. useEffect reset state — root cause của "file biến mất"</h3>
+<p>Khi <code>!tempFile</code>, có useEffect(res) đồng bộ component state với V2 file list:</p>
+<pre>
+useEffect(() => {
+  if (files !== undefined && !tempFile) {
+    // Tìm file_path trong V2 list
+    const match = files.find(f => f.path === file_path);
+    if (!match) {
+      <strong>handleOnNewValue({ value: "", file_path: "" })</strong> // ← RESET về rỗng!
+    }
+  }
+}, [files, value, file_path]);
+</pre>
+<p><strong>Timeline với V1 (cũ):</strong></p>
+<ol>
+  <li>Upload file → V1 API → không tạo UserFile → không có trong V2 cache</li>
+  <li><code>handleOnNewValue({ value: "file.png", file_path: "flowId/ts_file.png" })</code></li>
+  <li>useEffect fires → V2 cache không có file → <strong>reset state về rỗng</strong></li>
+  <li>File biến mất khỏi component! ❌</li>
+</ol>
+<p><strong>Timeline với V2 (fix):</strong></p>
+<ol>
+  <li>Upload file → V2 API → tạo UserFile → optimistic update V2 cache</li>
+  <li><code>handleOnNewValue({ value: data.name, file_path: "userId/file.png" })</code></li>
+  <li>useEffect fires → V2 cache có file với path <code>"userId/file.png"</code> → <strong>match thành công</strong></li>
+  <li>State preserved! ✅</li>
+</ol>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="section">
+<h2>🎯 Yêu cầu chức năng</h2>
+<table>
+  <tr><th>#</th><th>Yêu cầu</th><th>Loại</th></tr>
+  <tr><td>FR1</td><td>Paste ảnh trong OCR Paddle → upload file qua <strong>V2 API</strong> → hiển thị trong danh sách</td><td><span class="badge bug">Critical</span></td></tr>
+  <tr><td>FR2</td><td><code>handleButtonClick</code> dùng đúng response field <code>data.path</code> (V2) thay vì <code>data.file_path</code> (V1)</td><td><span class="badge bug">Critical</span></td></tr>
+  <tr><td>FR3</td><td>Import <code>usePostUploadFileV2</code> đầy đủ; xoá import không dùng</td><td><span class="badge fix">Required</span></td></tr>
+  <tr><td>FR4</td><td>Không upload trùng lặp khi paste (guard modal trong InputFileComponent)</td><td><span class="badge fix">Required</span></td></tr>
+  <tr><td>FR5</td><td>Paste hoạt động cả 2 mode: simple input (tempFile=true) và modal (tempFile=false)</td><td><span class="badge fix">Required</span></td></tr>
+</table>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="section">
+<h2>🏗️ Component tree & data flow</h2>
+
+<h3>Mode 1: Simple Input (<code>tempFile=true</code> hoặc <code>ENABLE_FILE_MANAGEMENT=false</code>)</h3>
+<pre>
+InputFileComponent
+├── &lt;input readonly onClick={handleButtonClick} /&gt;
+├── &lt;Button onClick={handleButtonClick} /&gt;
+├── handleFileChange (paste) → uploadFile → mutateAsync({ file }) → V2 API
+└── handleButtonClick → createFileUpload → mutateAsync({ file, id }) → V2 API
+</pre>
+
+<h3>Mode 2: File Manager Modal (<code>tempFile=false + ENABLE_FILE_MANAGEMENT=true</code>)</h3>
+<pre>
+InputFileComponent
+├── FilesRendererComponent (selected files)
+├── FileManagerModal (popup)
+│   ├── DragFilesComponent
+│   │   ├── drop zone → handleDrop → useUploadFile → V2 API
+│   │   ├── click → handleSelectFiles → useUploadFile → V2 API
+│   │   └── paste → handlePaste → useUploadFile → V2 API ✅
+│   └── RecentFilesComponent (file list)
+│       └── select → internalSelectedFiles
+├── InputFileComponent paste handler → <span class="badge bug">sẽ duplicate với DragFilesComponent khi modal mở</span>
+└── useEffect đồng bộ V2 file list với component state
+</pre>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="section">
+<h2>✏️ Thay đổi code</h2>
+
+<h3>File duy nhất: <span class="file-link critical">src/frontend/src/components/core/parameterRenderComponent/components/inputFileComponent/index.tsx</span></h3>
+
+<h4>Sửa 1 — Import (dòng 4-5)</h4>
+<pre class="diff">
+<span class="line rem">import { useGetFilesV2 } from "@/controllers/API/queries/file-management";</span>
+<span class="line rem">import { usePostUploadFile } from "@/controllers/API/queries/files/use-post-upload-file";</span>
+<span class="line add">import { useGetFilesV2, usePostUploadFileV2 } from "@/controllers/API/queries/file-management";</span>
+</pre>
+
+<h4>Sửa 2 — handleButtonClick: fix response field name</h4>
+<p>V2 response trả về <code>data.path</code> (không phải <code>data.file_path</code>). Cần sửa 2 chỗ:</p>
+<pre class="diff">
+<span class="line">resolve({</span>
+<span class="line rem">  file_name: file.name,</span>
+<span class="line rem">  file_path: data.file_path,          // V1 field → undefined khi dùng V2</span>
+<span class="line add">  file_name: data.name ?? file.name,  // V2 field: data.name</span>
+<span class="line add">  file_path: data.path,               // V2 field: data.path</span>
+<span class="line">});</span>
+</pre>
+
+<h4>Sửa 3 — Guard paste handler tránh duplicate khi modal mở</h4>
+<p>Thêm guard trong <code>handleFileChange</code>:</p>
+<pre class="diff">
+<span class="line">const handleFileChange = useCallback(</span>
+<span class="line">  (event: React.ChangeEvent&lt;HTMLInputElement&gt; | ClipboardEvent) => {</span>
+<span class="line">    if ("clipboardData" in event) {</span>
+<span class="line add">      // Nếu modal file manager đang mở, để DragFilesComponent xử lý</span>
+<span class="line add">      const dialog = (event.target as HTMLElement)?.closest('[role="dialog"]');</span>
+<span class="line add">      if (dialog) return;</span>
+<span class="line">      </span>
+<span class="line">      const items = event.clipboardData?.items;</span>
+<span class="line">      if (!items) return;</span>
+<span class="line">      for (let i = 0; i &lt; items.length; i++) {</span>
+<span class="line">        const file = items[i].getAsFile();</span>
+<span class="line">        if (file) {</span>
+<span class="line">          uploadFile(file);</span>
+<span class="line">          return;</span>
+<span class="line">        }</span>
+<span class="line">      }</span>
+<span class="line">    }</span>
+<span class="line">  },</span>
+<span class="line">  [uploadFile],</span>
+<span class="line">);</span>
+</pre>
+
+<h4>Sửa 4 — Xoá import không dùng (line 5)</h4>
+<pre class="diff">
+<span class="line rem">import { usePostUploadFile } from "@/controllers/API/queries/files/use-post-upload-file";</span>
+</pre>
+<p>Đã gộp trong Sửa 1 ở trên.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="section">
+<h2>🧪 Kiểm thử</h2>
+<ol>
+  <li><strong>Build check:</strong> <code>make format_frontend</code> + <code>make frontend</code> không lỗi</li>
+  <li><strong>Smoke test (Modal mode):</strong> Kéo OCR Paddle → click Select Files → paste ảnh → kiểm tra file hiển thị trong danh sách sau upload</li>
+  <li><strong>Smoke test (Simple input mode):</strong> Tắt <code>ENABLE_FILE_MANAGEMENT</code> (hoặc set <code>tempFile=true</code>) → click upload → chọn file → kiểm tra upload hoạt động và file hiển thị</li>
+  <li><strong>Network tab:</strong> Request đến <code>POST /api/v2/files</code> (không phải V1)</li>
+  <li><strong>No duplicate:</strong> Chỉ 1 request upload khi paste trong modal</li>
+  <li><strong>OCR hoạt động:</strong> Sau khi file hiển thị, run flow OCR Paddle → kiểm tra output markdown</li>
+</ol>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<div class="section">
+<h2>📌 Phạm vi</h2>
+<p><strong>In scope:</strong></p>
+<ul>
+  <li>Sửa import + response field + guard trong <code>InputFileComponent</code></li>
+  <li>Xoá import không dùng</li>
+</ul>
+<p><strong>Out of scope:</strong></p>
+<ul>
+  <li>Backend V1 API (không sửa — sẽ dùng V2 cho upload mới)</li>
+  <li>DragFilesComponent (paste handler đã đúng)</li>
+  <li>Component OCR khác ngoài Paddle</li>
+  <li>TanStack Query cache logic</li>
+</ul>
+</div>
+
+<hr style="margin: 2rem 0; border: none; border-top: 1px solid #e2e8f0;">
+<p style="color: #666; font-size: 0.85rem; text-align: center;">
+  QPlan v2 — Paste Upload Invisible in File List &middot; (còn nhớ AGENTS.md)
+</p>
+
+</body>
+</html>
