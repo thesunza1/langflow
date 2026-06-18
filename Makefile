@@ -280,6 +280,7 @@ setup_env: ## set up the environment
 
 
 backend: setup_env install_backend ## run the backend in development mode
+	$(MAKE) _ensure_ocr_worker
 	@-kill -9 $$(lsof -t -i:7860) || true
 ifdef login
 	@echo "Running backend autologin is $(login)";
@@ -302,6 +303,16 @@ else
 		--loop asyncio \
 		$(if $(workers),--workers $(workers),)
 endif
+
+# ──────────────────────────────────────────────────────────────
+# Helper: ensure OCR worker is running (start if not)
+# ──────────────────────────────────────────────────────────────
+_ensure_ocr_worker:
+	@if ! lsof -i :$(OCR_WORKER_PORT) >/dev/null 2>&1; then \
+	    echo "OCR worker not running — starting..."; \
+	    $(MAKE) start_ocr_worker > /dev/null 2>&1 & \
+	    echo "OCR worker starting in background..."; \
+	fi
 
 # OCR Worker targets
 OCR_WORKER_PORT ?= 18765
@@ -1113,3 +1124,32 @@ api_examples_local_syntax: ## syntax-check docs API sample files locally without
 
 # Include frontend-specific Makefile
 include Makefile.frontend
+
+# ──────────────────────────────────────────────────────────────────────────────
+# qstart — Production Launch (build frontend + start OCR worker + serve)
+# ──────────────────────────────────────────────────────────────────────────────
+qstart: ## Production Launch — build frontend, start OCR worker, start server
+	@echo ""
+	@echo "═══════════════════════════════════════════════════════"
+	@echo "  qstart — building frontend + starting OCR worker..."
+	@echo "  (worker loads models in parallel with frontend build)"
+	@echo "═══════════════════════════════════════════════════════"
+	$(MAKE) start_ocr_worker > /dev/null 2>&1 &
+	$(MAKE) build_frontend
+	@echo "  Waiting for OCR worker...";
+	@for i in $$(seq 1 30); do \
+	    if lsof -i :$(OCR_WORKER_PORT) >/dev/null 2>&1; then \
+	        echo "  OCR worker ready ($${i}s)"; \
+	        break; \
+	    fi; \
+	    sleep 1; \
+	done
+	@echo ""
+	@echo "═══════════════════════════════════════════════════════"
+	@echo "  qstart — starting production server..."
+	@echo "  Open http://localhost:7860"
+	@echo "  (còn nhớ AGENTS.md)"
+	@echo "═══════════════════════════════════════════════════════"
+	LANGFLOW_SKIP_AUTH_AUTO_LOGIN=true uv run langflow run \
+		--frontend-path src/backend/base/langflow/frontend \
+		--port 7860 --host 0.0.0.0

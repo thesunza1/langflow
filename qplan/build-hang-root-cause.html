@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Root Cause Analysis: Build Hanging</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, sans-serif; line-height: 1.6; max-width: 960px; margin: 0 auto; padding: 2rem 1rem; color: #1a1a2e; background: #f8f9fa; }
+  h1 { font-size: 1.8rem; color: #e74c3c; border-bottom: 3px solid #e74c3c; padding-bottom: 0.5rem; margin-bottom: 1.5rem; }
+  h2 { font-size: 1.3rem; color: #2c3e50; margin-top: 2rem; margin-bottom: 0.8rem; padding-left: 0.5rem; border-left: 4px solid #3498db; }
+  h3 { font-size: 1.1rem; color: #34495e; margin-top: 1.2rem; margin-bottom: 0.5rem; }
+  .severity-critical { color: #e74c3c; font-weight: bold; }
+  .severity-high { color: #e67e22; font-weight: bold; }
+  .severity-medium { color: #f39c12; font-weight: bold; }
+  .severity-low { color: #27ae60; font-weight: bold; }
+  .card { background: white; border-radius: 8px; padding: 1rem 1.2rem; margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  .card.critical { border-left: 4px solid #e74c3c; }
+  .card.high { border-left: 4px solid #e67e22; }
+  .card.medium { border-left: 4px solid #f39c12; }
+  .card.low { border-left: 4px solid #27ae60; }
+  code { background: #eee; padding: 0.15em 0.4em; border-radius: 3px; font-size: 0.9em; }
+  pre { background: #1e1e2e; color: #cdd6f4; padding: 1rem; border-radius: 6px; overflow-x: auto; font-size: 0.85rem; margin: 0.5rem 0; }
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+  th, td { padding: 0.6rem 0.8rem; text-align: left; border-bottom: 1px solid #ddd; }
+  th { background: #f0f0f0; font-weight: 600; }
+  .tag { display: inline-block; padding: 0.1em 0.5em; border-radius: 12px; font-size: 0.75rem; font-weight: 600; }
+  .tag.backend { background: #dbeafe; color: #1e40af; }
+  .tag.frontend { background: #fce7f3; color: #9d174d; }
+  .tag.cache { background: #d1fae5; color: #065f46; }
+  .tag.stream { background: #fef3c7; color: #92400e; }
+  .tag.fixed { background: #e0e7ff; color: #3730a3; }
+  .timeline { display: flex; flex-direction: column; gap: 0.5rem; padding: 1rem; }
+  .timeline-item { display: flex; gap: 1rem; align-items: flex-start; }
+  .timeline-dot { flex-shrink: 0; width: 12px; height: 12px; border-radius: 50%; margin-top: 6px; background: #3498db; }
+  .timeline-dot.wait { background: #f39c12; animation: pulse 1.5s infinite; }
+  .timeline-dot.block { background: #e74c3c; }
+  .timeline-dot.ok { background: #27ae60; }
+  @keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
+  .flowchart { display: flex; flex-direction: column; gap: 0; padding: 1rem 0; }
+  .flow-step { display: flex; align-items: center; gap: 0.8rem; padding: 0.6rem 0; border: 2px solid #ddd; border-radius: 6px; margin-bottom: 0.5rem; padding: 0.6rem 1rem; }
+  .flow-step .arrow { color: #999; font-size: 1.2rem; margin-left: auto; }
+  .flow-step.hang { border-color: #e74c3c; background: #fef2f2; }
+  .flow-step.warn { border-color: #f39c12; background: #fffbeb; }
+  .flow-step.fix { border-color: #27ae60; background: #f0fdf4; }
+  .badge { display: inline-block; padding: 0.1em 0.4em; border-radius: 3px; font-size: 0.75rem; font-weight: 700; }
+  .badge.new { background: #dbeafe; color: #1e40af; }
+  .badge.correction { background: #fce7f3; color: #9d174d; }
+</style>
+</head>
+<body>
+
+<h1>Root Cause Analysis: Build Hanging / Freezing</h1>
+
+<p><strong>File phân tích tại:</strong> 
+  <code>src/backend/base/langflow/api/build.py</code> (834 dòng), 
+  <code>src/lfx/src/lfx/graph/graph/base.py</code> (2566 dòng), 
+  <code>src/lfx/src/lfx/graph/vertex/base.py</code> (952 dòng), 
+  <code>src/frontend/src/controllers/API/api.tsx</code> (414 dòng), 
+  <code>src/frontend/src/stores/flowStore.ts</code> (1571 dòng)
+</p>
+
+<h2>Tổng Quan Luồng Build</h2>
+<div class="flowchart">
+  <div class="flow-step">1. Frontend POST /build/{flow_id}/flow → nhận job_id</div>
+  <div class="flow-step">2. Backend: <code>start_flow_build</code> → tạo queue + event_manager + background task</div>
+  <div class="flow-step warn">3. Backend: <code>generate_flow_events</code> → tạo graph, sort vertices → <code>_run_vertex_build</code></div>
+  <div class="flow-step hang">4. <code>_build_vertex</code> → <code>graph.build_vertex()</code> → <code>vertex.build()</code> → gọi LLM<br><span style="color:#e74c3c;font-size:0.85rem;">⏳ KHÔNG timeout — nếu LLM không response, treo mãi</span></div>
+  <div class="flow-step hang">5. <code>asyncio.gather(*tasks)</code> chờ tất cả vertices<br><span style="color:#e74c3c;font-size:0.85rem;">⏳ Nếu 1 vertex treo, tất cả đợi — không có tổng timeout</span></div>
+  <div class="flow-step hang">6. Frontend GET /events/{job_id} → <code>consume_and_yield</code> chờ queue<br><span style="color:#e74c3c;font-size:0.85rem;">⏳ await queue.get() — KHÔNG có timeout</span></div>
+  <div class="flow-step hang">7. Frontend <code>reader.read()</code> chờ stream data<br><span style="color:#e74c3c;font-size:0.85rem;">⏳ await reader.read() — KHÔNG có timeout</span></div>
+</div>
+
+<h2>Phân Tích Root Cause</h2>
+
+<h3>Tất cả các điểm có thể gây HANG</h3>
+
+<div class="card critical">
+<h4><span class="severity-critical">CRITICAL</span> <span class="tag backend">backend</span></h4>
+<h4>1. Không có timeout trên <code>vertex.build()</code></h4>
+<p><strong>File:</strong> <code>src/lfx/src/lfx/graph/vertex/base.py:837-843</code></p>
+<pre>for step in self.steps:
+    if step not in self.steps_ran:
+        await step(user_id=user_id, event_manager=event_manager, **kwargs)
+        # ^ KHÔNG có timeout — nếu LLM API không response, build treo vĩnh viễn
+        self.steps_ran.append(step)</pre>
+<p><strong>Hậu quả:</strong> Toàn bộ chain bị block. Streaming response không gửi sentinel → frontend chờ mãi. Sentinels chỉ được gửi khi exception (qua <code>_guarded_task</code>), nhưng nếu <code>await step()</code> không bao giờ trả về thì exception cũng không có.</p>
+<p><strong>Fix:</strong> Thêm <code>asyncio.wait_for(step(...), timeout=...)</code> với timeout configurable.</p>
+</div>
+
+<div class="card critical">
+<h4><span class="severity-critical">CRITICAL</span> <span class="tag backend">backend</span></h4>
+<h4>2. Không có timeout trên <code>asyncio.gather</code> tổng thể</h4>
+<p><strong>File:</strong> <code>src/backend/base/langflow/api/build.py:704</code></p>
+<pre>async def _run_vertex_build() -> None:
+    tasks = []
+    for vertex_id in ids:
+        task = asyncio.create_task(build_vertices(vertex_id, graph, event_manager, vertex_timedeltas))
+        tasks.append(task)
+    try:
+        await asyncio.gather(*tasks)  # ← KHÔNG có timeout tổng thể!
+    except asyncio.CancelledError:
+        ...</pre>
+<p><strong>Hậu quả:</strong> Nếu 1 vertex treo vì Fix 1 không được áp dụng, gather chờ tất cả → build không bao giờ kết thúc → không gửi sentinel → frontend đứng.</p>
+<p><strong>Fix:</strong> Thêm timeout tổng thể <code>asyncio.wait_for(gather(...), timeout=TOTAL_BUILD_TIMEOUT_S)</code>.</p>
+</div>
+
+<div class="card critical">
+<h4><span class="severity-critical">CRITICAL</span> <span class="tag backend">backend</span> <span class="tag stream">stream</span></h4>
+<h4>3. Không có timeout trên <code>queue.get()</code> trong streaming + thiếu sentinel khi hoàn thành bình thường</h4>
+<p><strong>File:</strong> <code>src/backend/base/langflow/api/build.py:283</code></p>
+<pre>async def consume_and_yield() -> AsyncIterator[str]:
+    try:
+        while True:
+            try:
+                event_id, value, put_time = await queue.get()
+                # ^ BLOCK vô thời hạn nếu build không gửi event/sentinel
+                if value is None:
+                    break  # sentinel — chỉ được gửi khi có exception (qua _guarded_task)
+                yield value.decode("utf-8")
+            except Exception as exc:
+                break</pre>
+<p><strong>Vấn đề sentinel:</strong> <code>_guarded_task</code> (job_queue/service.py:171) chỉ gửi sentinel <code>(None, None, time.time())</code> khi có EXCEPTION. Khi build hoàn thành bình thường, <code>event_manager.on_end()</code> chỉ gửi event JSON <code>{"event": "end"}</code> (value là bytes, KHÔNG phải None). <code>consume_and_yield()</code> đọc event này, yield nó, rồi quay lại <code>queue.get()</code> — và BLOCK MÃI MÃI.</p>
+<p><strong>Hậu quả:</strong> HTTP connection không bao giờ đóng → frontend <code>reader.read()</code> cũng treo mãi.</p>
+<p><strong>Fix:</strong> Sau khi <code>generate_flow_events</code> hoàn thành, cần gửi sentinel <code>(None, None, time.time())</code> vào queue — kể cả khi thành công. Thêm timeout với heartbeat cho queue.get().</p>
+</div>
+
+<div class="card high">
+<h4><span class="severity-high">HIGH</span> <span class="tag frontend">frontend</span></h4>
+<h4>4. Không có timeout trên frontend <code>reader.read()</code></h4>
+<p><strong>File:</strong> <code>src/frontend/src/controllers/API/api.tsx:355</code></p>
+<pre>const { done, value } = await reader.read();
+// ^ KHÔNG có timeout — nếu server không gửi data, treo vĩnh viễn</pre>
+<p><strong>Hậu quả:</strong> User thấy UI "loading" mãi, không có feedback. Build bị treo → frontend sẽ hiển thị spinner vô hạn.</p>
+<p><strong>Fix:</strong> Thêm timeout với <code>AbortSignal.race()</code> hoặc promise wrapper.</p>
+</div>
+
+<div class="card high">
+<h4><span class="severity-high">HIGH</span> <span class="tag frontend">frontend</span></h4>
+<h4>5. buildController bị thay thế khi build mới (global state)</h4>
+<p><strong>File:</strong> <code>src/frontend/src/stores/flowStore.ts:1311</code></p>
+<pre>buildController: new AbortController(),  // global — chỉ có 1 cái cho tất cả builds
+setBuildController: (controller) => {
+    set({ buildController: controller });  // build mới ghi đè build cũ
+},</pre>
+<p><strong>Hậu quả:</strong> Nếu build cũ đang chạy và build mới bắt đầu, controller cũ bị thay thế. Khi build cũ hoàn tất, không thể abort được nữa. Frontend gửi request với controller đã bị vô hiệu hóa.</p>
+<p><strong>Fix:</strong> Lưu controller trong closure của từng build request, không ghi đè global state. Dùng per-build AbortController.</p>
+</div>
+
+<div class="card high">
+<h4><span class="severity-high">HIGH</span> <span class="tag frontend">frontend</span> <span class="tag fixed">cần kiểm tra</span></h4>
+<h4>6. <code>isBuilding</code> flag global ngăn concurrent builds</h4>
+<p><strong>File:</strong> <code>src/frontend/src/stores/flowStore.ts:177,835,1168</code></p>
+<pre>isBuilding: false,  // global flag
+// l.835: if (get().isBuilding) { ... return }  // chặn build mới khi đang build
+// l.1168: if (!get().isBuilding) { ... }       // condition chỉ chạy khi không build</pre>
+<p><strong>Hậu quả:</strong> Dù backend có hỗ trợ concurrent, frontend vẫn chặn. Phase 2 đã thêm <code>buildQueue[]</code> để xếp hàng, nhưng queue này chỉ chạy tuần tự — không phải song song.</p>
+<p><strong>Fix:</strong> Để chạy thực sự song song: thay <code>isBuilding</code> global bằng per-flow flag (<code>Map&lt;flowId, boolean&gt;</code>), hoặc loại bỏ flag và dùng controller-based tracking.</p>
+</div>
+
+<div class="card low">
+<h4><span class="severity-low">LOW</span> <span class="tag backend">backend</span></h4>
+<h4>7. Timeout trên <code>asyncio.Lock</code> acquisition</h4>
+<p><strong>File:</strong> <code>src/lfx/src/lfx/graph/graph/base.py:1869</code></p>
+<pre>async get_next_runnable_vertices(self, lock: asyncio.Lock, ...):
+    async with lock:  // lock là per-run (flow_id:run_id)
+        ...</pre>
+<p><strong>Phân tích lại:</strong> Lock key là <code>f"{flow_id_str}:{run_id}"</code> (build.py:463) — mỗi run có lock riêng. Hai build song song dù cùng flow cũng KHÔNG contention. Lock này chỉ bị contention nếu cùng một build gọi nhiều lần (không thể xảy ra trong thực tế). <strong>Không phải nguyên nhân gây hang.</strong></p>
+<p><strong>Fix:</strong> Vẫn nên có timeout cho safety, nhưng ưu tiên thấp nhất.</p>
+</div>
+
+<div class="card low">
+<h4><span class="severity-low">LOW</span> <span class="tag cache">cache</span></h4>
+<h4>8. Cache TTL</h4>
+<p><strong>File:</strong> <code>src/backend/base/langflow/services/cache/service.py:56-57</code></p>
+<pre>class ThreadingInMemoryCache(CacheService, Generic[LockType]):
+    def __init__(self, max_size=None, expiration_time=60 * 60) -> None:
+        # expiration_time mặc định là 1 giờ — có TTL, KHÔNG phải không có!</pre>
+<p><strong>Phân tích lại:</strong> <code>ThreadingInMemoryCache</code> có <code>expiration_time=3600</code> (1 giờ) và <code>_get_without_lock()</code> kiểm tra <code>time.time() - item["time"] < self.expiration_time</code>. Cache <strong>CÓ TTL</strong>. Plan cũ ghi sai. <strong>Không cần fix này.</strong></p>
+</div>
+
+<h2>Sentinel Gap Analysis</h2>
+<div class="card critical">
+<h3><span class="severity-critical">PHÁT HIỆN MỚI</span></h3>
+<p>Sentinel chỉ được gửi qua <code>_guarded_task</code> khi có <strong>exception</strong>. Khi build hoàn thành bình thường, không có sentinel được gửi:</p>
+<pre>
+// job_queue/service.py:_guarded_task
+try:
+    await task_coro  # generate_flow_events hoàn thành OK
+except asyncio.CancelledError:
+    raise
+except Exception as exc:
+    # Chỉ TRƯỜNG HỢP NÀY mới gửi sentinel!
+    main_queue.put_nowait((None, None, time.time()))
+    raise
+# KHÔNG CÓ sentinel ở normal path!
+</pre>
+<p>Điều này có nghĩa: ngay cả khi build chạy thành công (không hang), <strong>luồng streaming vẫn treo</strong> sau event cuối cùng. Frontend chỉ thoát được khi user refresh hoặc disconnect.</p>
+<p><strong>Fix:</strong> Thêm <code>main_queue.put_nowait((None, None, time.time()))</code> SAU KHI <code>await task_coro</code> thành công.</p>
+</div>
+
+<h2>Sequence Diagram: Flow hang</h2>
+<div class="card">
+<pre>
+Frontend                    Backend (FastAPI)              LLM / Component
+   │                            │                               │
+   │── POST /build/flow ───────►│                               │
+   │                            │ create_graph()                 │
+   │                            │ sort_vertices()                │
+   │◄─── { job_id } ────────────│                               │
+   │                            │                               │
+   │── GET /events/{job_id} ───►│  (streaming via consume_and_yield)
+   │                            │  asyncio.gather()              │
+   │                            │    ├── build_vertex(A) ──────►│
+   │                            │    │   await vertex.build()   │
+   │                            │    │   ╔══════════════╗       │
+   │       ⏳ reader.read()     │    │   ║  LLM HANG    ║       │
+   │       (chờ data)           │    │   ║  (no timeout)║       │
+   │                            │    │   ╚══════════════╝       │
+   │                            │    │                          │
+   │                            │  queue.get() chờ event         │
+   │                            │  ╔══════════════════════╗     │
+   │       ⏳ reader.read()     │  ║  Streaming HANG      ║     │
+   │       (vẫn chờ)            │  ║  (no sentinel +      ║     │
+   │                            │  ║   no timeout)        ║     │
+   │                            │  ╚══════════════════════╝     │
+   │                            │                               │
+   │── user refresh page ──────►│    queue bị cleanup (5 phút)  │
+   │                            │    orphan task chạy ngầm      │
+</pre>
+</div>
+
+<h2>Kế Hoạch Fix (Ưu Tiên Đã Điều Chỉnh)</h2>
+
+<table>
+<tr><th>#</th><th>Mô tả</th><th>File</th><th>Priority</th><th>Nỗ lực</th></tr>
+<tr style="background:#fef2f2;">
+  <td>1</td>
+  <td><strong>Add timeout trên <code>vertex.build()</code></strong><br>Dùng <code>asyncio.wait_for()</code> với timeout configurable (mặc định 300s)</td>
+  <td><code>graph/vertex/base.py:837</code></td>
+  <td><span class="severity-critical">CRITICAL</span></td>
+  <td>Nhỏ (~1h)</td>
+</tr>
+<tr style="background:#fef2f2;">
+  <td>2</td>
+  <td><strong>Add timeout tổng thể cho build</strong><br><code>asyncio.wait_for(gather(...), timeout=TOTAL_BUILD_TIMEOUT)</code></td>
+  <td><code>build.py:704</code></td>
+  <td><span class="severity-critical">CRITICAL</span></td>
+  <td>Nhỏ (~0.5h)</td>
+</tr>
+<tr style="background:#fef2f2;">
+  <td>3</td>
+  <td><strong>Add sentinel + timeout trên streaming queue.get()</strong><br>Gửi sentinel sau khi build hoàn thành + timeout với heartbeat</td>
+  <td><code>build.py:283</code>, <code>job_queue/service.py:171</code></td>
+  <td><span class="severity-critical">CRITICAL</span></td>
+  <td>Trung (~2h)</td>
+</tr>
+<tr style="background:#fff3e0;">
+  <td>4</td>
+  <td><strong>Add timeout trên frontend reader.read()</strong><br>RACE AbortController với timeout signal</td>
+  <td><code>api.tsx:355</code></td>
+  <td><span class="severity-high">HIGH</span></td>
+  <td>Nhỏ (~1h)</td>
+</tr>
+<tr style="background:#fff3e0;">
+  <td>5</td>
+  <td><strong>Per-build AbortController</strong><br>Không ghi đè global buildController</td>
+  <td><code>flowStore.ts:1311</code></td>
+  <td><span class="severity-high">HIGH</span></td>
+  <td>Nhỏ (~1h)</td>
+</tr>
+<tr style="background:#fff3e0;">
+  <td>6</td>
+  <td><strong>Per-flow isBuilding flag</strong><br>Thay isBuilding global bằng Map&lt;flowId, boolean&gt; cho concurrent builds</td>
+  <td><code>flowStore.ts:177,835,1168</code></td>
+  <td><span class="severity-high">HIGH</span></td>
+  <td>Trung (~2h)</td>
+</tr>
+<tr style="background:#f0fdf4;">
+  <td>7</td>
+  <td><strong>Timeout trên async lock acquisition</strong><br><code>asyncio.wait_for(lock.acquire(), 30)</code></td>
+  <td><code>graph/graph/base.py:1869</code></td>
+  <td><span class="severity-low">LOW</span></td>
+  <td>Nhỏ (~0.5h)</td>
+</tr>
+<tr style="background:#f0fdf4;">
+  <td>8</td>
+  <td><strong>Cache TTL — KHÔNG CẦN</strong><br>ThreadingInMemoryCache đã có expiration_time=3600s</td>
+  <td><code>cache/service.py</code></td>
+  <td><span style="color:#999;">KHÔNG LÀM</span></td>
+  <td>—</td>
+</tr>
+</table>
+
+<h2>Thay đổi từ bản qplan cũ</h2>
+<div class="card">
+<ul>
+  <li><span class="badge correction">SỬA</span> <strong>Fix 6 (lock)</strong>: giảm từ HIGH → LOW. Per-run lock ko contention</li>
+  <li><span class="badge correction">SỬA</span> <strong>Fix 7 (cache TTL)</strong>: loại bỏ. Cache đã có expiration_time=3600s</li>
+  <li><span class="badge new">MỚI</span> <strong>Fix 6 (isBuilding)</strong>: thêm per-flow flag. Chặn concurrent từ frontend</li>
+  <li><span class="badge new">MỚI</span> <strong>Sentinel Gap</strong>: thêm sentinel sau normal completion. Phát hiện critical</li>
+  <li><span class="badge correction">SỬA</span> <strong>Line numbers</strong>: cập nhật chính xác</li>
+</ul>
+</div>
+
+<h2>Chi Tiết Implementation</h2>
+
+<h3>Fix 1: Timeout trên vertex.build()</h3>
+<pre># src/lfx/src/lfx/graph/vertex/base.py
+import asyncio
+from lfx.services.deps import get_settings_service
+
+# Trong build method, thay vì:
+for step in self.steps:
+    if step not in self.steps_ran:
+        await step(...)
+        self.steps_ran.append(step)
+
+# Thành:
+_settings = get_settings_service()
+_build_timeout = getattr(_settings.settings, 'vertex_build_timeout', 300) if _settings else 300
+for step in self.steps:
+    if step not in self.steps_ran:
+        await asyncio.wait_for(
+            step(user_id=user_id, event_manager=event_manager, **kwargs),
+            timeout=_build_timeout
+        )
+        self.steps_ran.append(step)
+</pre>
+
+<h3>Fix 2: Timeout tổng thể build</h3>
+<pre># src/backend/base/langflow/api/build.py
+TOTAL_BUILD_TIMEOUT_S = 600  # 10 minutes
+
+# Trong generate_flow_events, thay:
+await _run_vertex_build()
+# Thành:
+try:
+    await asyncio.wait_for(
+        _run_vertex_build(),
+        timeout=TOTAL_BUILD_TIMEOUT_S
+    )
+except asyncio.TimeoutError:
+    await logger.aerror(f"Build timed out after {TOTAL_BUILD_TIMEOUT_S}s")
+    event_manager.on_error(data={"error": "Build timed out"})
+    raise
+</pre>
+
+<h3>Fix 3: Sentinel + timeout trên streaming queue</h3>
+<pre># 3a) src/backend/base/langflow/api/build.py — consume_and_yield
+STREAMING_QUEUE_TIMEOUT = 30.0  # seconds without events → send heartbeat
+
+async def consume_and_yield():
+    try:
+        while True:
+            try:
+                event_id, value, put_time = await asyncio.wait_for(
+                    queue.get(), timeout=STREAMING_QUEUE_TIMEOUT
+                )
+                if value is None:
+                    break  # sentinel
+                yield value.decode("utf-8")
+            except asyncio.TimeoutError:
+                # heartbeat — keep connection alive
+                continue
+            except Exception:
+                break
+    finally:
+        _cancel_heartbeat()
+
+# 3b) job_queue/service.py — _guarded_task
+# Thêm sentinel SAU KHI build thành công:
+try:
+    await task_coro
+except ...:
+    ...
+else:
+    # ✅ Gửi sentinel khi build hoàn thành bình thường
+    with contextlib.suppress(Exception):
+        main_queue.put_nowait((None, None, time.time()))
+</pre>
+
+<h3>Fix 4: Frontend streaming timeout</h3>
+<pre>// src/frontend/src/controllers/API/api.tsx
+const STREAM_TIMEOUT = 120_000; // 2 minutes without data
+
+// Thay vì:
+const { done, value } = await reader.read();
+
+// Thành:
+function withTimeout(promise, ms, signal) {
+    return Promise.race([
+        promise,
+        new Promise((_, reject) => {
+            const timer = setTimeout(() => reject(new Error('Stream timeout')), ms);
+            signal?.addEventListener('abort', () => {
+                clearTimeout(timer);
+                reject(new DOMException('Aborted', 'AbortError'));
+            });
+        }),
+    ]);
+}
+const { done, value } = await withTimeout(reader.read(), STREAM_TIMEOUT, buildController.signal);
+</pre>
+
+<h3>Fix 5: Per-build AbortController</h3>
+<pre>// Thay vì lưu global buildController, closure trong từng build request:
+const buildFlow = async (flowId, ...) => {
+    const controller = new AbortController();
+    try {
+        const response = await fetch(..., { signal: controller.signal });
+        // đọc stream với controller này
+    } finally {
+        controller = null;
+    }
+};
+// Không gọi setBuildController() để tránh ghi đè
+</pre>
+
+<h3>Fix 6: Per-flow isBuilding flag</h3>
+<pre>// flowStore.ts — thay isBuilding global bằng Map
+buildingFlows: Map&lt;string, boolean&gt; = new Map(),  // flowId → đang build?
+
+// Check: if (get().buildingFlows.get(flowId)) { ... }
+// Set:  set(state => { state.buildingFlows.set(flowId, true); })
+// Clear: set(state => { state.buildingFlows.set(flowId, false); })
+</pre>
+
+<h2>In Scope / Out of Scope</h2>
+
+<div class="card">
+<h3>In Scope</h3>
+<ul>
+  <li>Thêm timeout configurable trên tất cả blocking operations (vertex build, gather, queue get, streaming read)</li>
+  <li>Gửi sentinel sau normal completion (sửa sentinel gap)</li>
+  <li>Per-build AbortController + per-flow isBuilding flag</li>
+</ul>
+</div>
+<div class="card">
+<h3>Out of Scope</h3>
+<ul>
+  <li>Background worker architecture cho builds (quá lớn)</li>
+  <li>Redis/Kafka-based job queue redesign (đã có RedisJobQueueService)</li>
+  <li>UI redesign cho concurrent builds (chỉ sửa logic store)</li>
+</ul>
+</div>
+
+<h2>Test Plan</h2>
+<ul>
+  <li><strong>Unit tests:</strong> Mock LLM call bị hang, verify timeout exception được throw + sentinel được gửi</li>
+  <li><strong>Integration tests:</strong> Chạy flow với component chậm, verify timeout + error event</li>
+  <li><strong>Frontend tests:</strong> Mock streaming response bị treo, verify timeout + error UI</li>
+  <li><strong>Manual concurrent:</strong> Chạy 2 flow riêng biệt cùng lúc, verify cả 2 hoàn thành</li>
+  <li><strong>Manual parallel:</strong> Trong cùng 1 flow, chạy 2 nhánh song song (A→B→C và D→E), verify cả 2 hoàn thành</li>
+</ul>
+
+<hr>
+<p style="margin-top: 2rem; color: #666; font-style: italic;">Phân tích bởi Codex — 18 Jun 2026 (bản cập nhật sau code review thực tế)</p>
+</body>
+</html>

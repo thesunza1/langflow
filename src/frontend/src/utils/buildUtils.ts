@@ -318,7 +318,7 @@ export async function buildFlowVertices({
       buildController.signal.addEventListener("abort", () => {
         onBuildStopped && onBuildStopped();
       });
-      useFlowStore.getState().setBuildController(buildController);
+      useFlowStore.getState().addBuildController(buildController);
 
       const buildResults: Array<boolean> = [];
 
@@ -331,7 +331,7 @@ export async function buildFlowVertices({
         onValidateNodes,
       };
 
-      return performStreamingRequest({
+      const _streamResp = performStreamingRequest({
         method: "POST",
         url: buildUrl,
         body: postData,
@@ -359,6 +359,11 @@ export async function buildFlowVertices({
         },
         buildController,
       });
+
+      _streamResp.finally(() => {
+        useFlowStore.getState().removeBuildController(buildController);
+      });
+      return _streamResp;
     }
   } catch (e) {
     console.error(e);
@@ -411,7 +416,7 @@ export async function buildFlowVertices({
         console.error("Error canceling build:", error);
       }
     });
-    useFlowStore.getState().setBuildController(buildController);
+    useFlowStore.getState().addBuildController(buildController);
     // Then stream the events
     const eventsUrl = customEventsUrl(job_id, playgroundPage);
     const buildResults: Array<boolean> = [];
@@ -426,7 +431,7 @@ export async function buildFlowVertices({
         onValidateNodes,
       };
 
-      return performStreamingRequest({
+      const _streamResp2 = performStreamingRequest({
         method: "GET",
         url: eventsUrl,
         onData: async (event) => {
@@ -453,6 +458,11 @@ export async function buildFlowVertices({
         },
         buildController,
       });
+
+      _streamResp2.finally(() => {
+        useFlowStore.getState().removeBuildController(buildController);
+      });
+      return _streamResp2;
     } else {
       const callbacks = {
         onBuildStart,
@@ -462,12 +472,17 @@ export async function buildFlowVertices({
         onGetOrderSuccess,
         onValidateNodes,
       };
-      return await pollBuildEvents(
+      const _pollResp = pollBuildEvents(
         eventsUrl,
         buildResults,
         callbacks,
         buildController,
       );
+
+      _pollResp.finally(() => {
+        useFlowStore.getState().removeBuildController(buildController);
+      });
+      return _pollResp;
     }
   } catch (error: unknown) {
     console.error("Build process error:", error);

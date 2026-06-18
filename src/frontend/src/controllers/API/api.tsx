@@ -288,6 +288,38 @@ function ApiInterceptor() {
   return null;
 }
 
+// Maximum time (ms) to wait without data before timing out the stream.
+const STREAM_TIMEOUT_MS = 120_000; // 2 minutes
+
+// Helper to race reader.read() against a timeout and abort signal.
+async function readWithTimeout(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  timeoutMs: number,
+  abortSignal: AbortSignal,
+): Promise<{ done: boolean; value?: Uint8Array }> {
+  const readPromise = reader.read();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`Stream timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new DOMException("Stream aborted", "AbortError"));
+    };
+    abortSignal.addEventListener("abort", onAbort, { once: true });
+    readPromise
+      .then((result) => {
+        clearTimeout(timer);
+        abortSignal.removeEventListener("abort", onAbort);
+        resolve(result);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        abortSignal.removeEventListener("abort", onAbort);
+        reject(err);
+      });
+  });
+}
 export type StreamingRequestParams = {
   method: string;
   url: string;
@@ -352,7 +384,11 @@ async function performStreamingRequest({
     }
     const reader = response.body.getReader();
     while (true) {
-      const { done, value } = await reader.read();
+      const { done, value } = await readWithTimeout(
+        reader,
+        STREAM_TIMEOUT_MS,
+        buildController.signal,
+      );
       if (done) {
         break;
       }

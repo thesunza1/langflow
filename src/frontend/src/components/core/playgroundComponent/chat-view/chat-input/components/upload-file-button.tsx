@@ -8,14 +8,12 @@ interface UploadFileButtonProps {
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   handleFileChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
   handleButtonClick: () => void;
-  isBuilding: boolean;
 }
 
 const UploadFileButton = ({
   fileInputRef,
   handleFileChange,
   handleButtonClick,
-  isBuilding,
 }: UploadFileButtonProps) => {
   const { t } = useTranslation();
 
@@ -32,7 +30,7 @@ const UploadFileButton = ({
     >
       <div>
         <input
-          disabled={isBuilding}
+          disabled={false}
           type="file"
           ref={fileInputRef}
           style={{ display: "none" }}
@@ -40,12 +38,8 @@ const UploadFileButton = ({
           accept={CHAT_UPLOAD_ATTACHMENT_ACCEPT}
         />
         <Button
-          disabled={isBuilding}
-          className={`h-7 w-7 px-0 flex items-center justify-center ${
-            isBuilding
-              ? "cursor-not-allowed"
-              : "text-muted-foreground hover:text-primary"
-          }`}
+          disabled={false}
+          className="h-7 w-7 px-0 flex items-center justify-center text-muted-foreground hover:text-primary"
           onClick={handleClick}
           unstyled
         >

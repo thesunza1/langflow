@@ -38,6 +38,11 @@ if TYPE_CHECKING:
     Log = dict
 
 
+# Default timeout (in seconds) for each vertex build step.
+# If a step takes longer than this, the vertex build will raise TimeoutError.
+_BUILD_STEP_TIMEOUT = 300
+
+
 class VertexStates(str, Enum):
     """Vertex are related to it being active, inactive, or in an error state."""
 
@@ -844,7 +849,13 @@ class Vertex:
             # Run steps
             for step in self.steps:
                 if step not in self.steps_ran:
-                    await step(user_id=user_id, event_manager=event_manager, **kwargs)
+                    try:
+                        await asyncio.wait_for(
+                            step(user_id=user_id, event_manager=event_manager, **kwargs),
+                            timeout=_BUILD_STEP_TIMEOUT,
+                        )
+                    except asyncio.TimeoutError:
+                        raise TimeoutError(f"Vertex {self.id}: step timed out after {_BUILD_STEP_TIMEOUT}s") from None
                     self.steps_ran.append(step)
 
             self.finalize_build()

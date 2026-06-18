@@ -1,5 +1,3 @@
-import Loading from "@/components/ui/loading";
-import useFlowStore from "@/stores/flowStore";
 import { Button } from "../../../../../../components/ui/button";
 import { Case } from "../../../../../../shared/components/caseComponent";
 import type { FilePreviewType } from "../../../../../../types/components";
@@ -27,12 +25,8 @@ const ButtonSendWrapper = ({
   chatValue,
   files,
 }: ButtonSendWrapperProps) => {
-  const stopBuilding = useFlowStore((state) => state.stopBuilding);
-
-  const isBuilding = useFlowStore((state) => state.isBuilding);
-  const showStopButton = isBuilding || files.some((file) => file.loading);
-  const showSendButton =
-    !(isBuilding || files.some((file) => file.loading)) && !noInput;
+  const showStopButton = files.some((file) => file.loading);
+  const showSendButton = !files.some((file) => file.loading) && !noInput;
 
   const getButtonState = () => {
     if (showStopButton) return BUTTON_STATES.SHOW_STOP;
@@ -46,9 +40,7 @@ const ButtonSendWrapper = ({
 
   const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
-    if (showStopButton && isBuilding) {
-      stopBuilding();
-    } else if (!showStopButton) {
+    if (!showStopButton) {
       send();
     }
   };

@@ -6,7 +6,6 @@ import { cn } from "@/utils/utils";
 import type { AudioRecordingState } from "../hooks/use-audio-recording";
 
 interface AudioButtonProps {
-  isBuilding: boolean;
   recordingState: AudioRecordingState;
   onStartRecording: () => void;
   onStopRecording: () => void;
@@ -14,7 +13,6 @@ interface AudioButtonProps {
 }
 
 const AudioButton = ({
-  isBuilding,
   recordingState,
   onStartRecording,
   onStopRecording,
@@ -23,7 +21,7 @@ const AudioButton = ({
   const { t } = useTranslation();
   const isRecording = recordingState === "recording";
   const isProcessing = recordingState === "processing";
-  const isDisabled = isBuilding || isProcessing || !isSupported;
+  const isDisabled = isProcessing || !isSupported;
 
   const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();

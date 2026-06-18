@@ -12,7 +12,6 @@ import { classNames } from "../../../../../../utils/utils";
 interface TextAreaWrapperProps {
   checkSendingOk: (event: React.KeyboardEvent<HTMLTextAreaElement>) => boolean;
   send: () => void;
-  isBuilding: boolean;
   noInput: boolean;
   chatValue: string;
   CHAT_INPUT_PLACEHOLDER: string;
@@ -44,7 +43,6 @@ const resizeTextarea = (textarea: HTMLTextAreaElement, value: string): void => {
 const TextAreaWrapper = ({
   checkSendingOk,
   send,
-  isBuilding,
   noInput,
   chatValue,
   CHAT_INPUT_PLACEHOLDER,
@@ -71,11 +69,12 @@ const TextAreaWrapper = ({
     "form-input block w-full border-0 custom-scroll focus:border-ring rounded-none shadow-none focus:ring-0 p-0 sm:text-sm !bg-transparent resize-none";
 
   // Auto-focus when not building and input is enabled
+  // Auto-focus when not disabled
   useEffect(() => {
-    if (!isBuilding && !noInput) {
+    if (!noInput) {
       inputRef.current?.focus();
     }
-  }, [isBuilding, noInput, inputRef]);
+  }, [noInput, inputRef]);
 
   // Resize textarea whenever chatValue changes (handles programmatic changes like clearing after send)
   // Note: handleChange handles resize for user input, but this ensures programmatic changes also resize
@@ -139,7 +138,7 @@ const TextAreaWrapper = ({
       onKeyDown={handleKeyDown}
       rows={1}
       ref={inputRef}
-      disabled={isBuilding || noInput}
+      disabled={noInput}
       value={chatValue}
       onChange={handleChange}
       className={classNames(fileClass, additionalClassNames)}

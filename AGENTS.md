@@ -349,42 +349,32 @@ Commit all changes to the local git repository with a structured message.
 
 ### qstart — Production Launch
 
-Start Langflow with the built frontend for better performance (no Vite HMR, no React DevTools warnings). Use this when testing after code changes or when the dev mode is too laggy.
+Single-command production launch. Builds the frontend and starts the OCR worker
+in parallel (worker loads GPU + models during build), then starts the server.
 
-1. **Build frontend** — Compile the production bundle:
-   ```bash
-   make build_frontend
-   ```
-   This runs `npx vite build` and copies the output to `src/backend/base/langflow/frontend/`.
+```bash
+make qstart
+```
 
-2. **Start OCR worker** — Start the OCR worker daemon (pre-loads PaddleOCR for fast concurrent OCR):
-   ```bash
-   make start_ocr_worker
-   ```
-   This launches a background TCP server on port 18765 that keeps PaddleOCR
-   and PP-DocLayoutV3 loaded in memory.  Stop with `make stop_ocr_worker` when done.
+After the server banner appears, OCR completes in **~0.5s** (GPU CUDA) because
+the worker was pre-loaded with models from `models/ocr/`.
 
-3. **Start production server** — Run Langflow with the built frontend:
-   ```bash
-   uv run langflow run --frontend-path src/backend/base/langflow/frontend --port 7860 --host 0.0.0.0
-   ```
-   
-4. **Verify** — Open http://localhost:7860 (server startup takes ~60s due to backend imports).
+Stop the worker when done:
+```bash
+make stop_ocr_worker
+```
 
-4. **Troubleshooting** — If port 7860 is occupied:
-   ```bash
-   lsof -i :7860          # find the PID
-   kill -9 <PID>          # kill the old process
-   ```
-   Or use a different port:
-   ```bash
-   uv run langflow run --frontend-path src/backend/base/langflow/frontend --port 7861 --host 0.0.0.0
-   ```
-
+**Troubleshooting** — If port 7860 is occupied:
+```bash
+lsof -i :7860          # find the PID
+kill -9 <PID>          # kill the old process
+```
+Or use a different port:
+```bash
+LFX_OCR_WORKER_PORT=18766 make qstart PORT=7861
+```
 
 ### qstart_dev — Dev Server (Hot Reload)
-
-Start Langflow in development mode with hot reload so code changes appear immediately without rebuilding the frontend. Use this during active development when you need fast iteration.
 
 Requires **three terminals** (or a terminal multiplexer like tmux).
 

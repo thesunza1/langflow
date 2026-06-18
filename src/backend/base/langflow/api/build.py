@@ -55,6 +55,15 @@ from langflow.services.telemetry.schema import (
 STREAMING_ACTIVITY_REFRESH_S = 10.0
 
 
+# Maximum time (seconds) for the entire flow build process.
+# If the build takes longer than this, it will be cancelled.
+TOTAL_BUILD_TIMEOUT_S = 600  # 10 minutes
+
+# Timeout (seconds) waiting for the next event from the build queue.
+# If no event arrives within this window, the stream sends a heartbeat.
+STREAMING_QUEUE_TIMEOUT = 30.0
+
+
 def _log_component_input_telemetry(
     vertex,
     vertex_id: str,
@@ -280,12 +289,15 @@ async def create_flow_response(
         try:
             while True:
                 try:
-                    event_id, value, put_time = await queue.get()
+                    event_id, value, put_time = await asyncio.wait_for(queue.get(), timeout=STREAMING_QUEUE_TIMEOUT)
                     if value is None:
                         break
                     get_time = time.time()
                     yield value.decode("utf-8")
                     await logger.adebug(f"Event {event_id} consumed in {get_time - put_time:.4f}s")
+                except asyncio.TimeoutError:
+                    # No event received within timeout — keep connection alive.
+                    continue
                 except Exception as exc:  # noqa: BLE001
                     await logger.aexception(f"Error consuming event: {exc}")
                     break
@@ -373,7 +385,7 @@ async def generate_flow_events(
             components_count = len(graph.vertices)
             vertices_to_run = list(graph.vertices_to_run.union(get_top_level_vertices(graph, graph.vertices_to_run)))
 
-            await chat_service.set_cache(flow_id_str, graph)
+            await chat_service.set_cache(f"{flow_id_str}:{graph.run_id}", graph)
             await log_telemetry(start_time, components_count, run_id=run_id, success=True)
 
         except Exception as exc:
@@ -460,14 +472,26 @@ async def generate_flow_events(
         try:
             vertex = graph.get_vertex(vertex_id)
             try:
-                lock = chat_service.async_cache_locks[flow_id_str]
+                lock = chat_service.async_cache_locks[f"{flow_id_str}:{graph.run_id}"]
+                # Wrap cache callbacks with run_id prefix so concurrent builds
+                # for the same flow do not collide on vertex cache keys.
+                _get_cache = (
+                    (lambda key, **kw: chat_service.get_cache(f"{graph.run_id}:{key}", **kw))
+                    if graph.run_id
+                    else chat_service.get_cache
+                )
+                _set_cache = (
+                    (lambda key, data, **kw: chat_service.set_cache(f"{graph.run_id}:{key}", data, **kw))
+                    if graph.run_id
+                    else chat_service.set_cache
+                )
                 vertex_build_result = await graph.build_vertex(
                     vertex_id=vertex_id,
                     user_id=str(current_user.id),
                     inputs_dict=inputs.model_dump() if inputs else {},
                     files=files,
-                    get_cache=chat_service.get_cache,
-                    set_cache=chat_service.set_cache,
+                    get_cache=_get_cache,
+                    set_cache=_set_cache,
                     event_manager=event_manager,
                 )
                 result_dict = vertex_build_result.result_dict
@@ -509,7 +533,7 @@ async def generate_flow_events(
                     artifacts=artifacts,
                 )
             else:
-                await chat_service.set_cache(flow_id_str, graph)
+                await chat_service.set_cache(f"{flow_id_str}:{graph.run_id}", graph)
 
             timedelta = time.perf_counter() - start_time
 
@@ -629,7 +653,7 @@ async def generate_flow_events(
                     )
                 )
                 tasks.append(task)
-            await asyncio.gather(*tasks)
+            await asyncio.wait_for(asyncio.gather(*tasks), timeout=TOTAL_BUILD_TIMEOUT_S)
 
     try:
         ids, vertices_to_run, graph = await build_graph_and_get_order()
@@ -669,7 +693,7 @@ async def generate_flow_events(
     if chat_service is not None and hasattr(chat_service, "clear_cache"):
         for vid in vertices_to_run:
             try:
-                await chat_service.clear_cache(key=vid)
+                await chat_service.clear_cache(key=f"{graph.run_id}:{vid}")
             except Exception:
                 logger.exception(f"Failed to clear cache for vertex {vid}")
 
@@ -689,7 +713,7 @@ async def generate_flow_events(
             task = asyncio.create_task(build_vertices(vertex_id, graph, event_manager, vertex_timedeltas))
             tasks.append(task)
         try:
-            await asyncio.gather(*tasks)
+            await asyncio.wait_for(asyncio.gather(*tasks), timeout=TOTAL_BUILD_TIMEOUT_S)
         except asyncio.CancelledError:
             # background_tasks is already drained after the POST /build response
             # is sent; add_task() is silently dropped here. Use create_task()

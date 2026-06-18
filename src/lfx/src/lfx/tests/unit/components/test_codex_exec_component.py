@@ -95,8 +95,7 @@ class TestCodexExecComponent:
         CodexExecComponent._cleanup_temp("")
 
     def test_streaming_uses_popen(self, monkeypatch):
-        """execute should use Popen (not run) for streaming."""
-        import subprocess
+        """Execute should use Popen (not run) for streaming."""
         monkeypatch.setattr(shutil, "which",
                             lambda cmd: None if cmd == "codex" else f"/usr/bin/{cmd}")
         comp = CodexExecComponent()

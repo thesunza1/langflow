@@ -278,6 +278,10 @@ class JobQueueService(Service):
             with contextlib.suppress(Exception):
                 main_queue.put_nowait((None, None, time.time()))
             raise
+        else:
+            # Normal completion — send sentinel to close the stream.
+            with contextlib.suppress(Exception):
+                main_queue.put_nowait((None, None, time.time()))
 
     def get_queue_data(self, job_id: str) -> tuple[asyncio.Queue, EventManager, asyncio.Task | None, float | None]:
         """Retrieve the complete data structure associated with a job's queue.

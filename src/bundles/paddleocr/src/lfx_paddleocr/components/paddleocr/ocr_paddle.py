@@ -13,14 +13,13 @@ from __future__ import annotations
 
 import atexit
 import json
-import select
 import os
+import select
 import socket
 import subprocess
 import sys
 import textwrap
 import threading
-import time
 from pathlib import Path
 
 from lfx.custom import Component
@@ -232,11 +231,16 @@ class _OcrWorkerProcess:
             self._start()
 
     def _start(self):
+        _env = os.environ.copy()
+        _env.setdefault("PADDLE_PDX_CACHE_HOME", os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, os.pardir, os.pardir, os.pardir, os.pardir, os.pardir, os.pardir, "models", "ocr", "paddlex"))
+        _env.setdefault("HF_HOME", os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, os.pardir, os.pardir, os.pardir, os.pardir, os.pardir, os.pardir, "models", "ocr", "hf"))
+        _env.setdefault("TOKENIZERS_PARALLELISM", "false")
         self._process = subprocess.Popen(
             [sys.executable, "-u", "-c", self._CHILD_SCRIPT],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
+            env=_env,
         )
 
     def _kill(self):
@@ -324,7 +328,7 @@ class _OcrTcpClient:
                 pass
             self._last_ok = True
             return True
-        except (OSError, socket.timeout):
+        except (TimeoutError, OSError):
             self._last_ok = False
             return False
 
@@ -422,13 +426,13 @@ class OcrPaddleComponent(Component):
             name="lang",
             display_name="Language",
             options=["Auto", "chinese", "english", "vietnamese", "japanese", "korean", "french", "german"],
-            value="Auto",
+            value="vietnamese",
             info="OCR language. 'Auto' tries multiple common languages and picks the best result.",
         ),
         BoolInput(
             name="use_layout",
             display_name="Use Layout Analysis",
-            value=True,
+            value=False,
             info="Enable PP-DocLayoutV3 for document structure analysis (title, table, figure, etc.).",
             advanced=True,
         ),
@@ -507,21 +511,24 @@ class OcrPaddleComponent(Component):
             msg = "No images provided. Upload images or paste base64 data."
             raise ValueError(msg)
 
-        # Try external worker first (pre-loaded at boot, supports concurrency)
-        if _ocr_tcp_available:
-            try:
-                return _ocr_tcp.process(
-                    images_config=images_config,
-                    lang=PADDLEOCR_LANG_MAP.get(self.lang, "ch"),
-                    use_layout=bool(self.use_layout),
-                    timeout_per_image=int(getattr(self, "timeout", OCR_TIMEOUT_PER_IMAGE)),
-                    n_images=len(images_config),
-                )
-            except (ConnectionError, socket.timeout, OSError, RuntimeError) as exc:
-                import logging as _log
-                _log.getLogger(__name__).warning(
-                    "OCR TCP worker failed (%s), falling back to embedded.", exc
-                )
+        # Always try TCP worker first (lazy check on each call).
+        # The TCP worker keeps models pre-loaded for fast (~3s) OCR.
+        # If the worker wasn't running when the module was imported,
+        # _ocr_tcp_available may be False, but the worker could have
+        # started later — so we try anyway.
+        try:
+            return _ocr_tcp.process(
+                images_config=images_config,
+                lang=PADDLEOCR_LANG_MAP.get(self.lang, "ch"),
+                use_layout=bool(self.use_layout),
+                timeout_per_image=int(getattr(self, "timeout", OCR_TIMEOUT_PER_IMAGE)),
+                n_images=len(images_config),
+            )
+        except (TimeoutError, ConnectionError, OSError, RuntimeError) as exc:
+            import logging as _log
+            _log.getLogger(__name__).warning(
+                "OCR TCP worker failed (%s), falling back to embedded.", exc
+            )
 
         # Fallback: embedded persistent subprocess
         return _ocr_worker.process(
@@ -533,7 +540,6 @@ class OcrPaddleComponent(Component):
         )
 
     def process_images(self) -> Message:
-
         """Process images and return combined Markdown as a Message."""
         images_config = self._get_images_config()
 

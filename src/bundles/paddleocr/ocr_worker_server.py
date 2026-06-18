@@ -43,12 +43,9 @@ import json
 import logging
 import os
 import signal
-import socket
 import socketserver
 import sys
 import textwrap
-import threading
-import time
 from pathlib import Path
 
 # --------------------------------------------------------------------------- #
@@ -56,6 +53,12 @@ from pathlib import Path
 # --------------------------------------------------------------------------- #
 os.environ.setdefault("PP_DEBUG", "0")
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+# Use project-local model cache (set by start_ocr_worker.sh, or fall back to default)
+_script_dir = Path(__file__).resolve().parent
+# File is at src/bundles/paddleocr/ocr_worker_server.py -> 3 levels up = project root
+_project_root = str(_script_dir.parent.parent.parent)
+os.environ.setdefault("PADDLE_PDX_CACHE_HOME", os.path.join(_project_root, "models", "ocr", "paddlex"))
+os.environ.setdefault("HF_HOME", os.path.join(_project_root, "models", "ocr", "hf"))
 
 logging.basicConfig(
     level=logging.INFO,
@@ -141,15 +144,15 @@ def _run_layout_analysis(pil_img):
 def _process_image(img_data: bytes, img_name: str, use_layout: bool) -> dict:
     """Run OCR on *img_data* and return a result dict."""
     try:
-        from PIL import Image
         import numpy as np
+        from PIL import Image
         pil_img = Image.open(io.BytesIO(img_data)).convert("RGB")
         img_array = np.array(pil_img)
     except Exception as e:
         return {"file": img_name, "error": f"Image load failed: {e}", "markdown": ""}
 
     try:
-        ocr_result = _ocr_engine.ocr(img_array, use_textline_orientation=True)
+        ocr_result = list(_ocr_engine.predict(img_array, use_textline_orientation=True))
     except Exception as e:
         return {"file": img_name, "error": f"OCR failed: {e}", "markdown": ""}
 
@@ -159,9 +162,12 @@ def _process_image(img_data: bytes, img_name: str, use_layout: bool) -> dict:
             texts = page_result.get("rec_texts") or []
             scores = page_result.get("rec_scores") or []
             polys = page_result.get("rec_polys") or []
+            dt_polys = page_result.get("dt_polys") or []
             for i, text in enumerate(texts):
                 confidence = scores[i] if i < len(scores) else 0.0
-                poly = polys[i].tolist() if i < len(polys) else None
+                poly = polys[i].tolist() if i < len(polys) else (
+                    dt_polys[i].tolist() if i < len(dt_polys) else None
+                )
                 lines_text.append({"text": text, "confidence": confidence, "bbox": poly})
 
     if use_layout:
@@ -172,19 +178,17 @@ def _process_image(img_data: bytes, img_name: str, use_layout: bool) -> dict:
         md_parts.append("*(No text detected)*")
     else:
         lines_text.sort(key=lambda x: (x["bbox"][0][1], x["bbox"][0][0]))
-        paragraph: list[str] = []
         for line in lines_text:
             text = line["text"].strip()
             if not text:
-                if paragraph:
-                    md_parts.append(" ".join(paragraph))
-                    md_parts.append("")
-                    paragraph = []
                 continue
-            paragraph.append(text)
-        if paragraph:
-            md_parts.append(" ".join(paragraph))
-            md_parts.append("")
+            bbox = line.get("bbox")
+            if bbox:
+                x1, y1 = bbox[0]
+                x2, y2 = bbox[2]
+                md_parts.append(f"- [{x1},{y1} → {x2},{y2}] {text}")
+            else:
+                md_parts.append(f"- {text}")
 
     return {
         "file": img_name,

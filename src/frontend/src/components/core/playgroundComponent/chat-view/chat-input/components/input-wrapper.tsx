@@ -9,7 +9,6 @@ import TextAreaWrapper from "./text-area-wrapper";
 import UploadFileButton from "./upload-file-button";
 
 interface InputWrapperProps {
-  isBuilding: boolean;
   checkSendingOk: (event: React.KeyboardEvent<HTMLTextAreaElement>) => boolean;
   send: () => void;
   noInput: boolean;
@@ -28,7 +27,6 @@ interface InputWrapperProps {
 }
 
 const InputWrapper = ({
-  isBuilding,
   checkSendingOk,
   send,
   noInput,
@@ -102,7 +100,6 @@ const InputWrapper = ({
         <div className="w-full">
           <TextAreaWrapper
             CHAT_INPUT_PLACEHOLDER={t("chat.inputPlaceholderSend")}
-            isBuilding={isBuilding}
             checkSendingOk={checkSendingOk}
             send={send}
             noInput={noInput}
@@ -137,7 +134,6 @@ const InputWrapper = ({
           <div className="flex-shrink-0">
             {ENABLE_FILES_ON_PLAYGROUND && (
               <UploadFileButton
-                isBuilding={isBuilding}
                 fileInputRef={fileInputRef}
                 handleFileChange={handleFileChange}
                 handleButtonClick={handleButtonClick}
@@ -147,14 +143,12 @@ const InputWrapper = ({
 
           <div className="flex items-center gap-2 flex-shrink-0">
             <AudioButton
-              isBuilding={isBuilding}
               recordingState={audioRecordingState}
               onStartRecording={onStartRecording}
               onStopRecording={onStopRecording}
               isSupported={isAudioSupported}
             />
             <ButtonSendWrapper
-              isBuilding={isBuilding}
               send={send}
               noInput={noInput}
               chatValue={chatValue}

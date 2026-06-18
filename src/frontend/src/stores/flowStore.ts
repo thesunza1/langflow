@@ -180,7 +180,10 @@ const useFlowStore = create<FlowStoreType>((set, get) => ({
   buildingFlowId: null,
   buildingSessionId: null,
   stopBuilding: () => {
-    get().buildController.abort();
+    // Abort all active build controllers
+    for (const c of get().buildControllerSet) {
+      c.abort();
+    }
     get().updateEdgesRunningByNodes(
       get().nodes.map((n) => n.id),
       false,
@@ -191,6 +194,8 @@ const useFlowStore = create<FlowStoreType>((set, get) => ({
       // biome-ignore lint/suspicious/noExplicitAny: legacy
       title: (i18n as any).t("alerts.buildStopped"),
     });
+    // After stopping, process the next queued build if any
+    get().processNextBuildQueue();
   },
   isPending: true,
   setHasIO: (hasIO) => {
@@ -384,6 +389,14 @@ const useFlowStore = create<FlowStoreType>((set, get) => ({
   },
   setBuildingSession: (flowId, sessionId) => {
     set({ buildingFlowId: flowId, buildingSessionId: sessionId });
+  },
+  processNextBuildQueue: async () => {
+    const queue = get().buildQueue;
+    if (queue.length > 0) {
+      const nextParams = queue[0];
+      set({ buildQueue: queue.slice(1) });
+      await get().buildFlow(nextParams);
+    }
   },
   setFlowState: (flowState) => {
     const newFlowState =
@@ -784,6 +797,7 @@ const useFlowStore = create<FlowStoreType>((set, get) => ({
     });
   },
   pastBuildFlowParams: null,
+  buildQueue: [],
   buildInfo: null,
   setBuildInfo: (buildInfo: { error?: string[]; success?: boolean } | null) => {
     set({ buildInfo });
@@ -874,6 +888,8 @@ const useFlowStore = create<FlowStoreType>((set, get) => ({
       get().updateBuildStatus(ids, BuildStatus.ERROR); // Set only the build status as error without adding info to the flow pool
 
       get().setIsBuilding(false);
+      // Process next queued build if any
+      await get().processNextBuildQueue();
       throw new Error("Invalid components");
     }
 
@@ -920,6 +936,8 @@ const useFlowStore = create<FlowStoreType>((set, get) => ({
         list: errorList,
       });
       get().setIsBuilding(false);
+      // Process next queued build if any
+      await get().processNextBuildQueue();
       throw new Error(
         blockedComponents.length > 0
           ? "Custom components are blocked while custom components are disabled"
@@ -1030,98 +1048,112 @@ const useFlowStore = create<FlowStoreType>((set, get) => ({
       }
     }
 
-    await buildFlowVerticesWithFallback({
-      session,
-      input_value,
-      files,
-      flowId: currentFlow!.id,
-      startNodeId,
-      stopNodeId,
-      onGetOrderSuccess: () => {},
-      onBuildComplete: (allNodesValid) => {
-        if (!silent) {
-          if (allNodesValid) {
-            get().setBuildInfo({ success: true });
+    try {
+      await buildFlowVerticesWithFallback({
+        session,
+        input_value,
+        files,
+        flowId: currentFlow!.id,
+        startNodeId,
+        stopNodeId,
+        onGetOrderSuccess: () => {},
+        onBuildComplete: (allNodesValid) => {
+          if (!silent) {
+            if (allNodesValid) {
+              get().setBuildInfo({ success: true });
+            }
           }
-        }
-        get().updateEdgesRunningByNodes(
-          get().nodes.map((n) => n.id),
-          false,
-        );
-        get().setIsBuilding(false);
-        // Invalidate KB-related caches so any KnowledgeIngestion node
-        // that ran inside this build surfaces its updated stats / runs
-        // the next time the user opens the assets/knowledge-bases tab.
-        // Cheap when no subscribers are mounted; the queries only
-        // refetch if a component is actively reading them.
-        queryClient.invalidateQueries({ queryKey: ["useGetKnowledgeBases"] });
-        queryClient.invalidateQueries({ queryKey: ["useGetIngestionRuns"] });
-        queryClient.invalidateQueries({
-          queryKey: ["useGetKnowledgeBaseChunks"],
-        });
-        trackFlowBuild(get().currentFlow?.name ?? "Unknown", false, {
-          flowId: get().currentFlow?.id,
-        });
-      },
-      onBuildUpdate: handleBuildUpdate,
-      onBuildError: (title: string, list: string[], elementList) => {
-        const idList =
-          (elementList
-            ?.map((element) => element.id)
-            .filter(Boolean) as string[]) ?? get().nodes.map((n) => n.id);
-        useFlowStore.getState().updateBuildStatus(idList, BuildStatus.ERROR);
-        const isCustomComponentBlocked = list.some((msg) =>
-          msg.toLowerCase().includes("custom components are not allowed"),
-        );
-        if (!isCustomComponentBlocked && get().componentsToUpdate.length > 0)
-          setErrorData({
-            title: i18n.t("errors.blockedComponents"),
+          get().updateEdgesRunningByNodes(
+            get().nodes.map((n) => n.id),
+            false,
+          );
+          get().setIsBuilding(false);
+          // Invalidate KB-related caches so any KnowledgeIngestion node
+          // that ran inside this build surfaces its updated stats / runs
+          // the next time the user opens the assets/knowledge-bases tab.
+          // Cheap when no subscribers are mounted; the queries only
+          // refetch if a component is actively reading them.
+          queryClient.invalidateQueries({ queryKey: ["useGetKnowledgeBases"] });
+          queryClient.invalidateQueries({ queryKey: ["useGetIngestionRuns"] });
+          queryClient.invalidateQueries({
+            queryKey: ["useGetKnowledgeBaseChunks"],
           });
-        get().updateEdgesRunningByNodes(
-          get().nodes.map((n) => n.id),
-          false,
-        );
-        get().setBuildInfo({ error: list, success: false });
-        useAlertStore.getState().addNotificationToHistory({
-          title: title,
-          type: "error",
-          list: list,
-        });
-        get().setIsBuilding(false);
-        get().buildController.abort();
-        trackFlowBuild(get().currentFlow?.name ?? "Unknown", true, {
-          flowId: get().currentFlow?.id,
-          error: list,
-        });
-      },
-      onBuildStart: (elementList) => {
-        const idList = elementList
-          // reference is the id of the vertex or the id of the parent in a group node
-          .map((element) => element.reference)
-          .filter(Boolean) as string[];
-        get().updateBuildStatus(idList, BuildStatus.BUILDING);
+          trackFlowBuild(get().currentFlow?.name ?? "Unknown", false, {
+            flowId: get().currentFlow?.id,
+          });
+        },
+        onBuildUpdate: handleBuildUpdate,
+        onBuildError: (title: string, list: string[], elementList) => {
+          const idList =
+            (elementList
+              ?.map((element) => element.id)
+              .filter(Boolean) as string[]) ?? get().nodes.map((n) => n.id);
+          useFlowStore.getState().updateBuildStatus(idList, BuildStatus.ERROR);
+          const isCustomComponentBlocked = list.some((msg) =>
+            msg.toLowerCase().includes("custom components are not allowed"),
+          );
+          if (!isCustomComponentBlocked && get().componentsToUpdate.length > 0)
+            setErrorData({
+              title: i18n.t("errors.blockedComponents"),
+            });
+          get().updateEdgesRunningByNodes(
+            get().nodes.map((n) => n.id),
+            false,
+          );
+          get().setBuildInfo({ error: list, success: false });
+          useAlertStore.getState().addNotificationToHistory({
+            title: title,
+            type: "error",
+            list: list,
+          });
+          get().setIsBuilding(false);
+          // Save controller before processing queue — processNextBuildQueue
+          // may start a new build that replaces buildController.
+          const _prevController = get().buildController;
+          // Process any queued build (error ends this build)
+          get().processNextBuildQueue();
+          _prevController.abort();
+          trackFlowBuild(get().currentFlow?.name ?? "Unknown", true, {
+            flowId: get().currentFlow?.id,
+            error: list,
+          });
+        },
+        onBuildStart: (elementList) => {
+          const idList = elementList
+            // reference is the id of the vertex or the id of the parent in a group node
+            .map((element) => element.reference)
+            .filter(Boolean) as string[];
+          get().updateBuildStatus(idList, BuildStatus.BUILDING);
 
-        const edges = get().edges;
-        const newEdges = edges.map((edge) => {
-          if (
-            edge.data?.targetHandle &&
-            idList.includes(edge.data.targetHandle.id ?? "")
-          ) {
-            edge.className = "ran";
-          }
-          return edge;
-        });
-        set({ edges: newEdges });
-      },
-      onValidateNodes: validateSubgraph,
-      nodes: get().nodes || undefined,
-      edges: get().edges || undefined,
-      logBuilds: get().onFlowPage,
-      playgroundPage,
-      eventDelivery,
-    });
+          const edges = get().edges;
+          const newEdges = edges.map((edge) => {
+            if (
+              edge.data?.targetHandle &&
+              idList.includes(edge.data.targetHandle.id ?? "")
+            ) {
+              edge.className = "ran";
+            }
+            return edge;
+          });
+          set({ edges: newEdges });
+        },
+        onValidateNodes: validateSubgraph,
+        nodes: get().nodes || undefined,
+        edges: get().edges || undefined,
+        logBuilds: get().onFlowPage,
+        playgroundPage,
+        eventDelivery,
+      });
+    } catch (_buildErr) {
+      console.error("Build error:", _buildErr);
+    }
     get().setIsBuilding(false);
-    get().revertBuiltStatusFromBuilding();
+    // Process next queued build if any
+    await get().processNextBuildQueue();
+    // Only revert build status if no next build started
+    if (!get().isBuilding) {
+      get().revertBuiltStatusFromBuilding();
+    }
   },
   getFlow: () => {
     return {
@@ -1263,8 +1295,21 @@ const useFlowStore = create<FlowStoreType>((set, get) => ({
     });
   },
   buildController: new AbortController(),
+  buildControllerSet: new Set<AbortController>(),
   setBuildController: (controller) => {
     set({ buildController: controller });
+  },
+  addBuildController: (controller) => {
+    const currentSet = get().buildControllerSet;
+    currentSet.add(controller);
+    set({ buildControllerSet: new Set(currentSet) });
+    // Also keep the single controller for backward compat
+    set({ buildController: controller });
+  },
+  removeBuildController: (controller) => {
+    const currentSet = get().buildControllerSet;
+    currentSet.delete(controller);
+    set({ buildControllerSet: new Set(currentSet) });
   },
   handleDragging: undefined,
   setHandleDragging: (handleDragging) => {

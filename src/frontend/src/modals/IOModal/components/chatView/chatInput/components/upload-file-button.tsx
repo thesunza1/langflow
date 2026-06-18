@@ -10,7 +10,6 @@ const UploadFileButton = ({
   fileInputRef,
   handleFileChange,
   handleButtonClick,
-  isBuilding,
 }) => {
   const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
@@ -25,7 +24,6 @@ const UploadFileButton = ({
     >
       <div>
         <input
-          disabled={isBuilding}
           type="file"
           ref={fileInputRef}
           style={{ display: "none" }}
@@ -33,12 +31,7 @@ const UploadFileButton = ({
           accept={CHAT_UPLOAD_ATTACHMENT_ACCEPT}
         />
         <Button
-          disabled={isBuilding}
-          className={`h-7 w-7 px-0 flex items-center justify-center ${
-            isBuilding
-              ? "cursor-not-allowed"
-              : "text-muted-foreground hover:text-primary"
-          }`}
+          className="h-7 w-7 px-0 flex items-center justify-center text-muted-foreground hover:text-primary"
           onClick={handleClick}
           unstyled
         >

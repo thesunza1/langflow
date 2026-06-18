@@ -2,7 +2,6 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { useStickToBottomContext } from "use-stick-to-bottom";
 import { useChatFileUpload } from "@/shared/hooks/use-chat-file-upload";
-import useFlowStore from "@/stores/flowStore";
 import { useUtilityStore } from "@/stores/utilityStore";
 import { useVoiceStore } from "@/stores/voiceStore";
 import useFlowsManagerStore from "../../../../../stores/flowsManagerStore";
@@ -27,8 +26,6 @@ export default function ChatInput({
 }: ChatInputType): JSX.Element {
   const currentFlowId = useFlowsManagerStore((state) => state.currentFlowId);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const stopBuilding = useFlowStore((state) => state.stopBuilding);
-  const isBuilding = useFlowStore((state) => state.isBuilding);
   const chatValue = useUtilityStore((state) => state.chatValueStore);
 
   const { scrollToBottom } = useStickToBottomContext();
@@ -49,7 +46,7 @@ export default function ChatInput({
     }
   }, [showAudioInput]);
 
-  useFocusOnUnlock(isBuilding, inputRef);
+  useFocusOnUnlock(inputRef);
   useAutoResizeTextArea(chatValue, inputRef);
 
   const { handleFileChange: handleFileUploadChange } = useChatFileUpload({
@@ -63,7 +60,7 @@ export default function ChatInput({
     return () => {
       document.removeEventListener("paste", handleFileUploadChange);
     };
-  }, [handleFileUploadChange, currentFlowId, isBuilding]);
+  }, [handleFileUploadChange, currentFlowId]);
 
   const setChatValueStore = useUtilityStore((state) => state.setChatValueStore);
 
@@ -91,10 +88,7 @@ export default function ChatInput({
 
   const checkSendingOk = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     return (
-      event.key === "Enter" &&
-      !isBuilding &&
-      !event.shiftKey &&
-      !event.nativeEvent.isComposing
+      event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing
     );
   };
 
@@ -108,13 +102,7 @@ export default function ChatInput({
   };
 
   if (noInput) {
-    return (
-      <NoInputView
-        isBuilding={isBuilding}
-        sendMessage={sendMessage}
-        stopBuilding={stopBuilding}
-      />
-    );
+    return <NoInputView sendMessage={sendMessage} />;
   }
 
   return (
@@ -141,7 +129,6 @@ export default function ChatInput({
           transition={{ duration: 0.2 }}
         >
           <InputWrapper
-            isBuilding={isBuilding}
             checkSendingOk={checkSendingOk}
             send={send}
             noInput={noInput}

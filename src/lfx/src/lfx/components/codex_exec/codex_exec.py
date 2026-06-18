@@ -133,7 +133,7 @@ class CodexExecComponent(Component):
 
         # 6. Build a display string of the actual command
         cmd_display = " ".join(
-            c if not " " in c else f'"{c}"' for c in cmd
+            c if " " not in c else f'"{c}"' for c in cmd
         )
         # Truncate the prompt part for display
         if len(cmd_display) > 300:
@@ -141,8 +141,8 @@ class CodexExecComponent(Component):
         self.status = f"Running: codex exec (dir={dir_path})"
 
         # 6. Execute with real-time log streaming
-        import time as _time
         import select as _select
+        import time as _time
 
         timeout_secs = int(self.timeout)
         exit_code = None
@@ -195,7 +195,7 @@ class CodexExecComponent(Component):
                         # Update running status with the latest line
                         display = text if len(text) <= 120 else text[:117] + "..."
                         elapsed = _time.time() - start_time
-                        self.status = f"({elapsed:.1f}s) {display}" 
+                        self.status = f"({elapsed:.1f}s) {display}"
 
                 if not got_data and process.poll() is not None:
                     # Read any remaining lines
@@ -211,7 +211,7 @@ class CodexExecComponent(Component):
                         self.log(text, name="codex:stderr")
                         display = text if len(text) <= 120 else text[:117] + "..."
                         elapsed = _time.time() - start_time
-                        self.status = f"({elapsed:.1f}s) {display}" 
+                        self.status = f"({elapsed:.1f}s) {display}"
                     break
 
             exit_code = process.wait()

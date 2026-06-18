@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useUtilityStore } from "@/stores/utilityStore";
 import { Textarea } from "../../../../../../components/ui/textarea";
@@ -7,7 +6,6 @@ import { classNames } from "../../../../../../utils/utils";
 const TextAreaWrapper = ({
   checkSendingOk,
   send,
-  isBuilding,
   noInput,
   chatValue,
   CHAT_INPUT_PLACEHOLDER,
@@ -36,12 +34,6 @@ const TextAreaWrapper = ({
   const additionalClassNames =
     "form-input block w-full border-0 custom-scroll focus:border-ring rounded-none shadow-none focus:ring-0 p-0 sm:text-sm !bg-transparent";
 
-  useEffect(() => {
-    if (!isBuilding && !noInput) {
-      inputRef.current?.focus();
-    }
-  }, [isBuilding, noInput]);
-
   return (
     <Textarea
       data-testid="input-chat-playground"
@@ -53,7 +45,7 @@ const TextAreaWrapper = ({
       }}
       rows={1}
       ref={inputRef}
-      disabled={isBuilding || noInput}
+      disabled={noInput}
       style={{
         resize: "none",
         bottom: `${inputRef?.current?.scrollHeight}px`,

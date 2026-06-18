@@ -144,7 +144,6 @@ export default function InputFileComponent({
     return fileTypes.includes(fileExtension || "");
   }
 
-
   const handleButtonClick = (): void => {
     createFileUpload({
       multiple: isList,

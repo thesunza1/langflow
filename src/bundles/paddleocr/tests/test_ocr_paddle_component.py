@@ -1,13 +1,10 @@
 """Unit tests for the OCR Paddle extension bundle (``lfx-paddleocr``)."""
 
-import json
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 from lfx_paddleocr import OcrPaddleComponent
-
-from lfx.schema import Message, DataFrame
 
 
 @pytest.fixture

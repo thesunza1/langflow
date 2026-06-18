@@ -122,6 +122,7 @@ export type FlowStoreType = {
   setBuildStartTime: (time: number) => void;
   setBuildDuration: (duration: number) => void;
   setBuildingSession: (flowId: string | null, sessionId: string | null) => void;
+  processNextBuildQueue: () => Promise<void>;
   setPending: (isPending: boolean) => void;
   resetFlow: (flow: FlowType | undefined) => void;
   resetFlowState: () => void;
@@ -179,6 +180,16 @@ export type FlowStoreType = {
   setBuildInfo: (
     buildInfo: { error?: string[]; success?: boolean } | null,
   ) => void;
+  buildQueue: Array<{
+    startNodeId?: string;
+    stopNodeId?: string;
+    input_value?: string;
+    files?: string[];
+    silent?: boolean;
+    session?: string;
+    stream?: boolean;
+    eventDelivery?: EventDeliveryType;
+  }>;
   pastBuildFlowParams: {
     startNodeId?: string;
     stopNodeId?: string;
@@ -300,6 +311,9 @@ export type FlowStoreType = {
   stopBuilding: () => void;
   buildController: AbortController;
   setBuildController: (controller: AbortController) => void;
+  buildControllerSet: Set<AbortController>;
+  addBuildController: (controller: AbortController) => void;
+  removeBuildController: (controller: AbortController) => void;
   currentBuildingNodeId: string[] | undefined;
   setCurrentBuildingNodeId: (nodeIds: string[] | undefined) => void;
   clearEdgesRunningByNodes: () => Promise<void>;

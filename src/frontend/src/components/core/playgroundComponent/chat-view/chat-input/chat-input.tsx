@@ -3,7 +3,6 @@ import { useCallback, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useChatFileUpload } from "@/shared/hooks/use-chat-file-upload";
 import useAlertStore from "@/stores/alertStore";
-import useFlowStore from "@/stores/flowStore";
 import useFlowsManagerStore from "@/stores/flowsManagerStore";
 import { useSessionManagerStore } from "@/stores/sessionManagerStore";
 import { useUtilityStore } from "@/stores/utilityStore";
@@ -31,8 +30,6 @@ export default function ChatInput({
   const currentFlowId = useFlowsManagerStore((state) => state.currentFlowId);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const setErrorData = useAlertStore((state) => state.setErrorData);
-  const stopBuilding = useFlowStore((state) => state.stopBuilding);
-  const isBuilding = useFlowStore((state) => state.isBuilding);
   const chatValue = useUtilityStore((state) => state.chatValueStore);
   const setChatValueStore = useUtilityStore((state) => state.setChatValueStore);
   const setAwaitingBotResponse = useUtilityStore(
@@ -126,10 +123,7 @@ export default function ChatInput({
 
   const checkSendingOk = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     return (
-      event.key === "Enter" &&
-      !isBuilding &&
-      !event.shiftKey &&
-      !event.nativeEvent.isComposing
+      event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing
     );
   };
 
@@ -142,13 +136,7 @@ export default function ChatInput({
   };
 
   if (noInput) {
-    return (
-      <NoInputView
-        isBuilding={isBuilding}
-        sendMessage={send}
-        stopBuilding={stopBuilding}
-      />
-    );
+    return <NoInputView sendMessage={send} />;
   }
 
   return (
@@ -161,7 +149,6 @@ export default function ChatInput({
         transition={{ duration: 0.2 }}
       >
         <InputWrapper
-          isBuilding={isBuilding}
           checkSendingOk={checkSendingOk}
           send={send}
           noInput={noInput}

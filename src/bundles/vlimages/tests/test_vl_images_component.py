@@ -5,8 +5,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from lfx.schema import DataFrame, Message
 from lfx_vlimages import VLImagesComponent
-from lfx.schema import Message, DataFrame
 
 
 @pytest.fixture

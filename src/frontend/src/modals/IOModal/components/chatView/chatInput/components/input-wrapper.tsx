@@ -13,7 +13,6 @@ import UploadFileButton from "./upload-file-button";
 import VoiceButton from "./voice-assistant/components/voice-button";
 
 interface InputWrapperProps {
-  isBuilding: boolean;
   checkSendingOk: (event: React.KeyboardEvent<HTMLTextAreaElement>) => boolean;
   send: () => void;
   noInput: boolean;
@@ -31,7 +30,6 @@ interface InputWrapperProps {
 }
 
 const InputWrapper: React.FC<InputWrapperProps> = ({
-  isBuilding,
   checkSendingOk,
   send,
   noInput,
@@ -103,7 +101,6 @@ const InputWrapper: React.FC<InputWrapperProps> = ({
         aria-label={t("playgroundComponent.focusChatInput")}
       >
         <TextAreaWrapper
-          isBuilding={isBuilding}
           checkSendingOk={checkSendingOk}
           send={send}
           noInput={noInput}
@@ -128,11 +125,10 @@ const InputWrapper: React.FC<InputWrapperProps> = ({
           ))}
         </div>
         <div className="flex w-full items-end justify-between">
-          <div className={isBuilding ? "cursor-not-allowed" : ""}>
+          <div>
             {(!playgroundPage ||
               (playgroundPage && ENABLE_FILES_ON_PLAYGROUND)) && (
               <UploadFileButton
-                isBuilding={isBuilding}
                 fileInputRef={fileInputRef}
                 handleFileChange={handleFileChange}
                 handleButtonClick={handleButtonClick}
