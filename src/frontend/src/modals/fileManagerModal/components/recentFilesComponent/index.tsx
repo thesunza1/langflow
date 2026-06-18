@@ -256,6 +256,7 @@ export default function RecentFilesComponent({
             <DeleteConfirmationModal
               onConfirm={() => handleBulkDelete()}
               description={`file${selectedFiles.length > 1 ? "s" : ""}`}
+              asChild
             >
               <Button
                 variant="destructive"

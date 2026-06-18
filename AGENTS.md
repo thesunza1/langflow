@@ -243,6 +243,9 @@ Run them in order. Each expects the previous step to be complete before starting
 
 Run **qstart** standalone anytime after code changes for a faster production-mode test.
 
+Run **qstart_dev** anytime during active development for hot-reload mode (no rebuild needed).
+
+
 ### qplan — Requirement Planning
 
 Translate user requests into a structured plan saved as HTML files under `qplan/`. Before drafting the plan, use **gitnexus** to analyze the existing codebase so the plan is grounded in the actual architecture:
@@ -354,12 +357,19 @@ Start Langflow with the built frontend for better performance (no Vite HMR, no R
    ```
    This runs `npx vite build` and copies the output to `src/backend/base/langflow/frontend/`.
 
-2. **Start production server** — Run Langflow with the built frontend:
+2. **Start OCR worker** — Start the OCR worker daemon (pre-loads PaddleOCR for fast concurrent OCR):
+   ```bash
+   make start_ocr_worker
+   ```
+   This launches a background TCP server on port 18765 that keeps PaddleOCR
+   and PP-DocLayoutV3 loaded in memory.  Stop with `make stop_ocr_worker` when done.
+
+3. **Start production server** — Run Langflow with the built frontend:
    ```bash
    uv run langflow run --frontend-path src/backend/base/langflow/frontend --port 7860 --host 0.0.0.0
    ```
    
-3. **Verify** — Open http://localhost:7860 (server startup takes ~60s due to backend imports).
+4. **Verify** — Open http://localhost:7860 (server startup takes ~60s due to backend imports).
 
 4. **Troubleshooting** — If port 7860 is occupied:
    ```bash
@@ -370,6 +380,81 @@ Start Langflow with the built frontend for better performance (no Vite HMR, no R
    ```bash
    uv run langflow run --frontend-path src/backend/base/langflow/frontend --port 7861 --host 0.0.0.0
    ```
+
+
+### qstart_dev — Dev Server (Hot Reload)
+
+Start Langflow in development mode with hot reload so code changes appear immediately without rebuilding the frontend. Use this during active development when you need fast iteration.
+
+Requires **three terminals** (or a terminal multiplexer like tmux).
+
+0. **Terminal 0 — OCR Worker** (start first, before backend):
+   ```bash
+   make start_ocr_worker
+   ```
+   This pre-loads PaddleOCR in a background TCP server on port 18765.
+   The backend component will discover it automatically on first use.
+   Stop with `make stop_ocr_worker` when done.
+
+1. **Terminal 1 — Backend** (FastAPI with auto-reload on port 7860):
+   ```bash
+   make backend
+   ```
+   This runs `uvicorn --reload` so Python changes trigger a server restart automatically.
+
+2. **Terminal 2 — Frontend** (Vite dev server on port 3000):
+   ```bash
+   make frontend
+   ```
+   This runs `vite` with HMR — React/TypeScript changes reflect in the browser instantly without a full rebuild.
+
+3. **Access** — Open http://localhost:3000 (the Vite dev server proxies API requests to port 7860).
+
+4. **Troubleshooting** — If port 7860 is occupied:
+   ```bash
+   lsof -i :7860          # find the PID
+   kill -9 <PID>          # kill the old process
+   ```
+
+**Note:** Unlike `qstart`, there is no production build step. The frontend loads unbundled modules from Vite's dev server, which gives faster iteration but higher memory usage and browser DevTools noise.
+
+
+## Editing Safety
+
+### Avoid accidental deletion when patching code
+
+When editing Python files with `sed` range replacements (`sed -i 'N,Mc\...'`),
+always verify that adjacent code was not accidentally removed:
+
+```bash
+# After any sed edit, check that all expected methods still exist
+grep -n "def my_method|def expected_method" file.py
+
+# Verify syntax is valid
+uv run python -c "import py_compile; py_compile.compile('file.py', doraise=True)"
+```
+
+**Prefer `apply_patch` (unified diff) over `sed` for code changes.**  A unified diff
+matches both old and new context so it cannot silently delete unrelated lines.
+Failing that, use `sed` with a content pattern rather than line numbers:
+
+```bash
+# Safe: replace a specific block by its boundaries
+sed -i '/def _run_ocr/,/^    def /c\
+# new content here' file.py
+
+# Risky: fragile when line numbers shift due to prior edits
+sed -i '497,511c\...' file.py
+```
+
+**Verify the component in the running server** after any component code change:
+
+```bash
+TOKEN=$(curl -s localhost:7860/api/v1/auto_login | python3 -c "import json,sys; print(json.load(sys.stdin)['access_token'])")
+curl -s --compressed -H "Authorization: Bearer $TOKEN" localhost:7860/api/v1/all \
+  | python3 -c "import json,sys; d=json.load(sys.stdin); print([k for k in d.get('paddleocr',{})])"
+```
+
 
 ## Response Reminder
 

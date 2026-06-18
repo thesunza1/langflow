@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { ICON_STROKE_WIDTH } from "@/constants/constants";
 import {
@@ -38,6 +38,7 @@ export default function InputFileComponent({
   const currentFlowId = useFlowsManagerStore((state) => state.currentFlowId);
   const setErrorData = useAlertStore((state) => state.setErrorData);
   const { validateFileSize } = useFileSizeValidator();
+  const { mutateAsync, isPending } = usePostUploadFileV2();
 
   // Handle file upload from clipboard paste
   const uploadFile = useCallback(
@@ -143,7 +144,6 @@ export default function InputFileComponent({
     return fileTypes.includes(fileExtension || "");
   }
 
-  const { mutateAsync, isPending } = usePostUploadFileV2();
 
   const handleButtonClick = (): void => {
     createFileUpload({

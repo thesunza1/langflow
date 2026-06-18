@@ -5,14 +5,21 @@ and optional PP-DocLayoutV3 layout analysis, outputting structured Markdown.
 
 PaddlePaddle and PyTorch run in an isolated subprocess (same pattern as Docling's
 _CHILD_SCRIPT) to prevent OOM and native-library-state issues in the main process.
+
+Optimization: Persistent worker subprocess keeps models loaded across calls.
 """  # noqa: EXE002
 
 from __future__ import annotations
 
+import atexit
 import json
+import select
+import os
+import socket
 import subprocess
 import sys
 import textwrap
+import threading
 import time
 from pathlib import Path
 
@@ -32,9 +39,353 @@ PADDLEOCR_LANG_MAP = {
 }
 
 OCR_TIMEOUT_PER_IMAGE = 300
-POLL_INTERVAL = 5
 
 
+# ------------------------------------------------------------------ #
+# Persistent worker process — keeps models loaded across calls.       #
+# ------------------------------------------------------------------ #
+class _OcrWorkerProcess:
+    """Persistent PaddleOCR worker process.
+
+    Keeps PaddleOCR + PP-DocLayoutV3 models loaded in memory across
+    multiple OCR calls by running a long-lived subprocess. Spawned
+    once on first use; automatically restarted on crash / timeout.
+    Communication is line-delimited JSON over stdin/stdout.
+    """
+
+    def __init__(self):
+        self._process: subprocess.Popen | None = None
+        self._lock = threading.Lock()
+
+    # ------------------------------------------------------------------ #
+    # Child script that loops, reading JSON lines from stdin.            #
+    # ------------------------------------------------------------------ #
+    _CHILD_SCRIPT: str = textwrap.dedent("""\
+        import base64, io, json, sys, os
+        from pathlib import Path
+
+        os.environ["PP_DEBUG"] = "0"
+        os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+        # Module-level caches (persist across requests in same process)
+        _ocr_engine = None
+        _ocr_lang = None
+        _layout_pipeline = None
+
+        LAYOUT_LABELS = {
+            0: "title", 1: "plain_text", 2: "abandon", 3: "figure",
+            4: "figure_caption", 5: "table", 6: "table_caption",
+            7: "table_footnote", 8: "isolate_formula", 9: "formula_caption",
+        }
+
+        def _ensure_ocr(lang):
+            global _ocr_engine, _ocr_lang
+            if _ocr_engine is not None and _ocr_lang == lang:
+                return
+            from paddleocr import PaddleOCR
+            _ocr_engine = PaddleOCR(use_textline_orientation=True, lang=lang, engine="transformers")
+            _ocr_lang = lang
+
+        def _ensure_layout():
+            global _layout_pipeline
+            if _layout_pipeline is not None:
+                return
+            from transformers import AutoProcessor, AutoModelForDocumentImageClassification
+            import torch
+            model_id = "PaddlePaddle/PP-DocLayoutV3_safetensors"
+            _layout_pipeline = {
+                "model": AutoModelForDocumentImageClassification.from_pretrained(model_id).eval(),
+                "processor": AutoProcessor.from_pretrained(model_id),
+            }
+            if torch.cuda.is_available():
+                _layout_pipeline["model"] = _layout_pipeline["model"].cuda()
+
+        def _run_layout_analysis(pil_img):
+            if _layout_pipeline is None:
+                return []
+            try:
+                import torch
+                inputs = _layout_pipeline["processor"](images=pil_img, return_tensors="pt")
+                if torch.cuda.is_available():
+                    inputs = {k: v.cuda() for k, v in inputs.items()}
+                with torch.no_grad():
+                    outputs = _layout_pipeline["model"](**inputs)
+                predicted_ids = outputs.logits.argmax(-1).squeeze().tolist()
+                if isinstance(predicted_ids, int):
+                    predicted_ids = [predicted_ids]
+                return [{"category": LAYOUT_LABELS.get(pid, "unknown")} for pid in predicted_ids]
+            except Exception as e:
+                sys.stderr.write(f"Layout analysis error: {e}\\n")
+                return []
+
+        def _process_image(img_data: bytes, img_name: str, use_layout: bool) -> dict:
+            try:
+                from PIL import Image
+                import numpy as np
+                pil_img = Image.open(io.BytesIO(img_data)).convert("RGB")
+                img_array = np.array(pil_img)
+            except Exception as e:
+                return {"file": img_name, "error": f"Image load failed: {e}", "markdown": ""}
+
+            try:
+                ocr_result = _ocr_engine.ocr(img_array, use_textline_orientation=True)
+            except Exception as e:
+                return {"file": img_name, "error": f"OCR failed: {e}", "markdown": ""}
+
+            lines_text = []
+            if ocr_result:
+                for page_result in ocr_result:
+                    texts = page_result.get("rec_texts") or []
+                    scores = page_result.get("rec_scores") or []
+                    polys = page_result.get("rec_polys") or []
+                    for i, text in enumerate(texts):
+                        confidence = scores[i] if i < len(scores) else 0.0
+                        poly = polys[i] if i < len(polys) else None
+                        lines_text.append({"text": text, "confidence": confidence, "bbox": poly})
+
+            if use_layout:
+                _run_layout_analysis(pil_img)
+
+            md_parts = [f"## {img_name}", ""]
+            if not lines_text:
+                md_parts.append("*(No text detected)*")
+            else:
+                lines_text.sort(key=lambda x: (x["bbox"][0][1], x["bbox"][0][0]))
+                paragraph = []
+                for line in lines_text:
+                    text = line["text"].strip()
+                    if not text:
+                        if paragraph:
+                            md_parts.append(" ".join(paragraph))
+                            md_parts.append("")
+                            paragraph = []
+                        continue
+                    paragraph.append(text)
+                if paragraph:
+                    md_parts.append(" ".join(paragraph))
+                    md_parts.append("")
+
+            return {
+                "file": img_name,
+                "markdown": "\\n".join(md_parts).strip(),
+                "text_lines": len(lines_text),
+                "error": None,
+            }
+
+        def _handle_request(cfg):
+            images_input = cfg["images"]
+            lang = cfg["lang"]
+            use_layout = cfg["use_layout"]
+
+            ocr_lang = lang if lang != "Auto" else "ch"
+            _ensure_ocr(ocr_lang)
+
+            if use_layout:
+                try:
+                    _ensure_layout()
+                except Exception as e:
+                    sys.stderr.write(f"Layout model load failed (continuing without layout): {e}\\n")
+
+            results = []
+            for item in images_input:
+                kind = item["kind"]
+                name = item.get("file_name", "image")
+                if kind == "file" and item.get("path"):
+                    try:
+                        data_bytes = Path(item["path"]).read_bytes()
+                    except Exception as e:
+                        results.append({"file": name, "error": f"File read error: {e}", "markdown": ""})
+                        continue
+                elif kind == "base64" and item.get("data"):
+                    try:
+                        data_bytes = base64.b64decode(item["data"])
+                    except Exception as e:
+                        results.append({"file": name, "error": f"Base64 decode error: {e}", "markdown": ""})
+                        continue
+                else:
+                    results.append({"file": name, "error": "No valid image data", "markdown": ""})
+                    continue
+                results.append(_process_image(data_bytes, name, use_layout))
+
+            print(json.dumps({"ok": True, "results": results}))
+
+        def main():
+            while True:
+                line = sys.stdin.readline()
+                if not line:
+                    break
+                try:
+                    cfg = json.loads(line)
+                    _handle_request(cfg)
+                except Exception as e:
+                    print(json.dumps({"ok": False, "error": str(e)}))
+                sys.stdout.flush()
+
+        if __name__ == "__main__":
+            main()
+    """)
+
+    # ------------------------------------------------------------------ #
+
+    def _ensure_alive(self):
+        if self._process is None or self._process.poll() is not None:
+            self._start()
+
+    def _start(self):
+        self._process = subprocess.Popen(
+            [sys.executable, "-u", "-c", self._CHILD_SCRIPT],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+
+    def _kill(self):
+        proc, self._process = self._process, None
+        if proc and proc.poll() is None:
+            try:
+                proc.kill()
+                proc.wait(timeout=5)
+            except Exception:
+                pass
+
+    def process(self, images_config, lang, use_layout, timeout_per_image, n_images):
+        timeout = max(30, timeout_per_image * n_images)
+        self._ensure_alive()
+        request = {"images": images_config, "lang": lang, "use_layout": use_layout}
+
+        with self._lock:
+            self._process.stdin.write(json.dumps(request).encode("utf-8") + b"\n")
+            self._process.stdin.flush()
+            readable, _, _ = select.select([self._process.stdout], [], [], timeout)
+            if not readable:
+                self._kill()
+                raise TimeoutError(f"OCR processing timed out after {timeout}s.")
+            response = self._process.stdout.readline()
+
+        if not response:
+            self._kill()
+            raise RuntimeError("OCR subprocess died unexpectedly.")
+
+        try:
+            payload = json.loads(response.decode("utf-8"))
+        except Exception as e:
+            self._kill()
+            raise RuntimeError(f"Invalid JSON from OCR subprocess: {e}") from e
+
+        if not payload.get("ok"):
+            raise RuntimeError(payload.get("error", "Unknown OCR error"))
+
+        return payload.get("results", [])
+
+    def shutdown(self):
+        proc, self._process = self._process, None
+        if proc and proc.poll() is None:
+            try:
+                proc.stdin.close()
+                proc.wait(timeout=5)
+            except Exception:
+                try:
+                    proc.kill()
+                    proc.wait()
+                except Exception:
+                    pass
+
+
+_ocr_worker = _OcrWorkerProcess()
+atexit.register(_ocr_worker.shutdown)
+
+
+# ------------------------------------------------------------------ #
+# TCP client -- connects to an external OCR worker server.           #
+# ------------------------------------------------------------------ #
+
+
+class _OcrTcpClient:
+    """Lightweight TCP client for the standalone OCR worker server.
+
+    When the worker server is running (started via
+    ``ocr_worker_server.py`` at boot), this client sends requests
+    over TCP instead of spawning an embedded subprocess.  This enables
+    concurrent OCR calls and keeps models pre-loaded.
+
+    Falls back gracefully to the embedded worker when the server is
+    unreachable.
+    """
+
+    def __init__(self, host: str = "127.0.0.1", port: int = 18765):
+        self._host = host
+        self._port = port
+        self._last_ok: bool | None = None
+
+    def is_alive(self, timeout: float = 2.0) -> bool:
+        """Return True iff the TCP server is reachable."""
+        try:
+            with socket.create_connection((self._host, self._port), timeout=timeout):
+                pass
+            self._last_ok = True
+            return True
+        except (OSError, socket.timeout):
+            self._last_ok = False
+            return False
+
+    def process(
+        self,
+        images_config: list[dict],
+        lang: str,
+        use_layout: bool,
+        timeout_per_image: int,
+        n_images: int,
+    ) -> list[dict]:
+        """Send an OCR request to the external worker and return results."""
+        timeout = max(30, timeout_per_image * n_images)
+        request = {
+            "images": images_config,
+            "lang": lang,
+            "use_layout": use_layout,
+        }
+        payload = json.dumps(request, ensure_ascii=False) + "\n"
+
+        s = socket.create_connection((self._host, self._port), timeout=10)
+        try:
+            s.settimeout(timeout)
+            s.sendall(payload.encode("utf-8"))
+            s.shutdown(socket.SHUT_WR)
+
+            # Read response (newline-terminated)
+            buf = bytearray()
+            while True:
+                ch = s.recv(1)
+                if not ch or ch == b"\n":
+                    break
+                buf.extend(ch)
+        finally:
+            s.close()
+
+        if not buf:
+            self._last_ok = False
+            raise RuntimeError("OCR worker returned empty response")
+
+        result = json.loads(buf.decode("utf-8"))
+        if not result.get("ok"):
+            self._last_ok = False
+            raise RuntimeError(result.get("error", "Unknown OCR error"))
+
+        return result["results"]
+
+
+# Module-level singleton
+_ocr_tcp = _OcrTcpClient()
+_ocr_tcp_available = (
+    False
+    if os.environ.get("LFX_OCR_WORKER_DISABLE", "").lower() in ("1", "true", "yes")
+    else _ocr_tcp.is_alive()
+)
+
+
+
+# ------------------------------------------------------------------ #
+# Component — delegates to persistent worker.                         #
+# ------------------------------------------------------------------ #
 class OcrPaddleComponent(Component):
     display_name = "OCR Paddle"
     description = (
@@ -104,176 +455,6 @@ class OcrPaddleComponent(Component):
         ),
     ]
 
-    # ------------------------------------------------------------------ #
-    # Child script that runs PaddleOCR in a separate OS process.          #
-    # ------------------------------------------------------------------ #
-    _CHILD_SCRIPT: str = textwrap.dedent(r"""
-        import base64, io, json, sys, os
-        from pathlib import Path
-
-        # Suppress excessive PaddlePaddle/transformers logging in the child
-        os.environ["PP_DEBUG"] = "0"
-        os.environ["TOKENIZERS_PARALLELISM"] = "false"
-
-        def main():
-            cfg = json.loads(sys.stdin.read())
-            images_input  = cfg["images"]       # list of {"kind":"file"|"base64","path":str|None,"data":str|None}
-            lang          = cfg["lang"]
-            use_layout    = cfg["use_layout"]
-
-            # ----- import paddleocr (lazy; first import loads torch/paddle) -----
-            try:
-                from paddleocr import PaddleOCR
-            except ImportError as e:
-                print(json.dumps({"ok": False, "error": f"PaddleOCR not installed: {e}"}))
-                return
-
-            # ----- layout model (optional) -----
-            layout_pipeline = None
-            if use_layout:
-                try:
-                    from transformers import AutoProcessor, AutoModelForDocumentImageClassification
-                    import torch
-                    # PP-DocLayoutV3 uses a lightweight layout model
-                    layout_model_id = "PaddlePaddle/PP-DocLayoutV3_safetensors"
-                    layout_processor = AutoProcessor.from_pretrained(layout_model_id)
-                    layout_model = AutoModelForDocumentImageClassification.from_pretrained(layout_model_id)
-                    layout_model.eval()
-                    if torch.cuda.is_available():
-                        layout_model = layout_model.cuda()
-                    layout_pipeline = {
-                        "model": layout_model,
-                        "processor": layout_processor,
-                    }
-                except Exception as e:
-                    # Layout model is best-effort; fall back to OCR-only
-                    sys.stderr.write(f"Layout model load failed (continuing without layout): {e}\n")
-                    layout_pipeline = None
-
-            LAYOUT_LABELS = {
-                0: "title", 1: "plain_text", 2: "abandon", 3: "figure",
-                4: "figure_caption", 5: "table", 6: "table_caption",
-                7: "table_footnote", 8: "isolate_formula", 9: "formula_caption",
-            }
-
-            # ----- PaddleOCR -----
-            ocr_lang = lang if lang != "Auto" else "ch"
-            try:
-                ocr = PaddleOCR(use_angle_cls=True, lang=ocr_lang, show_log=False)
-            except Exception as e:
-                print(json.dumps({"ok": False, "error": f"PaddleOCR init failed: {e}"}))
-                return
-
-            def run_layout_analysis(pil_img) -> list[dict]:
-                # Run PP-DocLayoutV3 on a PIL image and return list of layout regions.
-                if layout_pipeline is None:
-                    return []
-                try:
-                    import torch
-                    inputs = layout_pipeline["processor"](images=pil_img, return_tensors="pt")
-                    if torch.cuda.is_available():
-                        inputs = {k: v.cuda() for k, v in inputs.items()}
-                    with torch.no_grad():
-                        outputs = layout_pipeline["model"](**inputs)
-                    logits = outputs.logits
-                    predicted_ids = logits.argmax(-1).squeeze().tolist()
-                    if isinstance(predicted_ids, int):
-                        predicted_ids = [predicted_ids]
-                    # Return list of detected layout categories (no bbox from simple classifier)
-                    labels = [LAYOUT_LABELS.get(pid, "unknown") for pid in predicted_ids]
-                    return [{"category": cat} for cat in labels]
-                except Exception as e:
-                    sys.stderr.write(f"Layout analysis error: {e}\n")
-                    return []
-
-            def process_single_image(img_data: bytes, img_name: str) -> dict:
-                # Run OCR + optional layout on one image, return Markdown.
-                try:
-                    from PIL import Image
-                    pil_img = Image.open(io.BytesIO(img_data)).convert("RGB")
-                except Exception as e:
-                    return {"file": img_name, "error": f"Image load failed: {e}", "markdown": ""}
-
-                # ---- OCR ----
-                try:
-                    ocr_result = ocr.ocr(img_data, cls=True)
-                except Exception as e:
-                    return {"file": img_name, "error": f"OCR failed: {e}", "markdown": ""}
-
-                lines_text = []
-                if ocr_result and ocr_result[0]:
-                    for line_info in ocr_result[0]:
-                        bbox, (text, confidence) = line_info
-                        lines_text.append({"text": text, "confidence": confidence, "bbox": bbox})
-
-                # ---- Layout analysis (optional) ----
-                layout_regions = []
-                if use_layout:
-                    layout_regions = run_layout_analysis(pil_img)
-
-                # ---- Build Markdown ----
-                md_parts = [f"## {img_name}", ""]
-
-                if not lines_text:
-                    md_parts.append("*(No text detected)*")
-                else:
-                    # Sort OCR results top-to-bottom, left-to-right
-                    lines_text.sort(key=lambda x: (x["bbox"][0][1], x["bbox"][0][0]))
-
-                    # Group consecutive lines into paragraphs
-                    paragraph = []
-                    for line in lines_text:
-                        text = line["text"].strip()
-                        if not text:
-                            if paragraph:
-                                md_parts.append(" ".join(paragraph))
-                                md_parts.append("")
-                                paragraph = []
-                            continue
-                        paragraph.append(text)
-
-                    if paragraph:
-                        md_parts.append(" ".join(paragraph))
-                        md_parts.append("")
-
-                md_text = "\n".join(md_parts).strip()
-                return {
-                    "file": img_name,
-                    "markdown": md_text,
-                    "text_lines": len(lines_text),
-                    "error": None,
-                }
-
-            # ----- Process each image -----
-            results = []
-            for item in images_input:
-                kind = item["kind"]
-                name = item.get("file_name", "image")
-                if kind == "file" and item.get("path"):
-                    try:
-                        data_bytes = Path(item["path"]).read_bytes()
-                    except Exception as e:
-                        results.append({"file": name, "error": f"File read error: {e}", "markdown": ""})
-                        continue
-                elif kind == "base64" and item.get("data"):
-                    try:
-                        data_bytes = base64.b64decode(item["data"])
-                    except Exception as e:
-                        results.append({"file": name, "error": f"Base64 decode error: {e}", "markdown": ""})
-                        continue
-                else:
-                    results.append({"file": name, "error": "No valid image data", "markdown": ""})
-                    continue
-
-                result = process_single_image(data_bytes, name)
-                results.append(result)
-
-            print(json.dumps({"ok": True, "results": results}))
-
-        if __name__ == "__main__":
-            main()
-    """)
-
     # ------------------------------ Core logic ------------------------------
 
     def _get_images_config(self) -> list[dict]:
@@ -320,71 +501,43 @@ class OcrPaddleComponent(Component):
 
         return configs
 
-    def _run_ocr_subprocess(self, images_config: list[dict]) -> list[dict]:
-        """Run PaddleOCR in a subprocess and return results list."""
+    def _run_ocr(self, images_config: list[dict]) -> list[dict]:
+        """Run OCR -- prefer external TCP worker, fall back to embedded."""
         if not images_config:
             msg = "No images provided. Upload images or paste base64 data."
             raise ValueError(msg)
 
-        args = {
-            "images": images_config,
-            "lang": PADDLEOCR_LANG_MAP.get(self.lang, "ch"),
-            "use_layout": bool(self.use_layout),
-        }
+        # Try external worker first (pre-loaded at boot, supports concurrency)
+        if _ocr_tcp_available:
+            try:
+                return _ocr_tcp.process(
+                    images_config=images_config,
+                    lang=PADDLEOCR_LANG_MAP.get(self.lang, "ch"),
+                    use_layout=bool(self.use_layout),
+                    timeout_per_image=int(getattr(self, "timeout", OCR_TIMEOUT_PER_IMAGE)),
+                    n_images=len(images_config),
+                )
+            except (ConnectionError, socket.timeout, OSError, RuntimeError) as exc:
+                import logging as _log
+                _log.getLogger(__name__).warning(
+                    "OCR TCP worker failed (%s), falling back to embedded.", exc
+                )
 
-        timeout = max(30, int(getattr(self, "timeout", OCR_TIMEOUT_PER_IMAGE)) * len(images_config))
-        poll_interval = POLL_INTERVAL
-
-        import tempfile
-
-        with tempfile.TemporaryFile() as stdout_file, tempfile.TemporaryFile() as stderr_file:
-            proc = subprocess.Popen(  # noqa: S603
-                [sys.executable, "-u", "-c", self._CHILD_SCRIPT],
-                stdin=subprocess.PIPE,
-                stdout=stdout_file,
-                stderr=stderr_file,
-            )
-            proc.stdin.write(json.dumps(args).encode("utf-8"))
-            proc.stdin.close()
-
-            start = time.monotonic()
-            while proc.poll() is None:
-                elapsed = time.monotonic() - start
-                if elapsed >= timeout:
-                    proc.kill()
-                    proc.wait()
-                    msg = f"OCR processing timed out after {timeout}s."
-                    raise TimeoutError(msg)
-                self.log(f"OCR processing in progress ({int(elapsed)}s elapsed)...")
-                time.sleep(poll_interval)
-
-            stdout_file.seek(0)
-            stderr_file.seek(0)
-            stdout_bytes = stdout_file.read()
-            stderr_bytes = stderr_file.read()
-
-        if not stdout_bytes:
-            err_msg = stderr_bytes.decode("utf-8", errors="replace") if stderr_bytes else "no output"
-            msg = f"OCR subprocess error: {err_msg}"
-            raise RuntimeError(msg)
-
-        try:
-            payload = json.loads(stdout_bytes.decode("utf-8"))
-        except Exception as e:
-            err_msg = stderr_bytes.decode("utf-8", errors="replace")
-            msg = f"Invalid JSON from OCR subprocess: {e}. stderr={err_msg}"
-            raise RuntimeError(msg) from e
-
-        if not payload.get("ok"):
-            error_msg = payload.get("error", "Unknown OCR error")
-            raise RuntimeError(error_msg)
-
-        return payload.get("results", [])
+        # Fallback: embedded persistent subprocess
+        return _ocr_worker.process(
+            images_config=images_config,
+            lang=PADDLEOCR_LANG_MAP.get(self.lang, "ch"),
+            use_layout=bool(self.use_layout),
+            timeout_per_image=int(getattr(self, "timeout", OCR_TIMEOUT_PER_IMAGE)),
+            n_images=len(images_config),
+        )
 
     def process_images(self) -> Message:
+
         """Process images and return combined Markdown as a Message."""
         images_config = self._get_images_config()
-        results = self._run_ocr_subprocess(images_config)
+
+        results = self._run_ocr(images_config)
 
         md_sections = []
         file_count = 0
@@ -411,7 +564,7 @@ class OcrPaddleComponent(Component):
     def process_images_dataframe(self) -> DataFrame:
         """Process images and return a DataFrame with per-file results."""
         images_config = self._get_images_config()
-        results = self._run_ocr_subprocess(images_config)
+        results = self._run_ocr(images_config)
 
         rows = [
             Data(

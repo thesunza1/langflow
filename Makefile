@@ -303,6 +303,16 @@ else
 		$(if $(workers),--workers $(workers),)
 endif
 
+# OCR Worker targets
+OCR_WORKER_PORT ?= 18765
+
+start_ocr_worker: ## start the OCR worker daemon (pre-loads PaddleOCR)
+	@echo "Starting OCR Worker on port $(OCR_WORKER_PORT)...";
+	bash scripts/start_ocr_worker.sh --port $(OCR_WORKER_PORT)
+
+stop_ocr_worker: ## stop the OCR worker daemon
+	@bash scripts/stop_ocr_worker.sh
+
 build_and_run: setup_env ## build the project and run it
 	$(call CLEAR_DIRS,dist src/backend/base/dist)
 	make build
@@ -928,6 +938,10 @@ help_backend: ## show backend-specific commands
 	@echo ''
 	@echo "$(GREEN)═══════════════════════════════════════════════════════════════════$(NC)"
 	@echo ''
+	@echo ""
+	@echo "$(GREEN)OCR Worker:$(NC)"
+	@echo "  $(GREEN)make start_ocr_worker$(NC)   - Start OCR worker daemon (pre-loads PaddleOCR)"
+	@echo "  $(GREEN)make stop_ocr_worker$(NC)    - Stop OCR worker daemon"
 
 help_test: ## show testing commands
 	@echo ''
