@@ -821,28 +821,6 @@ export function FlowSidebarComponent({ isLoading }: FlowSidebarComponentProps) {
                             setShowConfig={setShowConfig}
                           />
                         )}
-                        {showComponents && (
-                          <Button
-                            onClick={() => setActiveSection("bundles")}
-                            variant="ghost"
-                            className="bg-muted hover:bg-muted/70 mx-3 px-2.5 !text-[13px] font-normal line-height-[16px] mb-3 group -mt-3 h-[34px]"
-                          >
-                            <span className="text-muted-foreground flex items-center">
-                              <ForwardedIconComponent
-                                name="blocks"
-                                className="h-4 w-4"
-                              />
-                            </span>
-                            <ShadTooltip
-                              content={t("sidebar.discoverMore")}
-                              styleClasses="z-50"
-                            >
-                              <span className="min-w-0 truncate">
-                                {t("sidebar.discoverMore")}
-                              </span>
-                            </ShadTooltip>
-                          </Button>
-                        )}
                       </>
                     ) : (
                       <NoResultsMessage
