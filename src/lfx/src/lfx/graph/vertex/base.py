@@ -40,7 +40,7 @@ if TYPE_CHECKING:
 
 # Default timeout (in seconds) for each vertex build step.
 # If a step takes longer than this, the vertex build will raise TimeoutError.
-_BUILD_STEP_TIMEOUT = 300
+_BUILD_STEP_TIMEOUT = 36000
 
 
 class VertexStates(str, Enum):
