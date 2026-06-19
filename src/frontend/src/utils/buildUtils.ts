@@ -62,7 +62,7 @@ export const BATCHABLE_EVENTS = new Set([
   "build_end",
 ]);
 
-export const BATCH_YIELD_MS = 50;
+export const BATCH_YIELD_MS = 200;
 
 function getInactiveVertexData(vertexId: string): VertexBuildTypeAPI {
   // Build VertexBuildTypeAPI

@@ -57,7 +57,7 @@ STREAMING_ACTIVITY_REFRESH_S = 10.0
 
 # Maximum time (seconds) for the entire flow build process.
 # If the build takes longer than this, it will be cancelled.
-TOTAL_BUILD_TIMEOUT_S = 600  # 10 minutes
+TOTAL_BUILD_TIMEOUT_S = 36000  # 10 hours
 
 # Timeout (seconds) waiting for the next event from the build queue.
 # If no event arrives within this window, the stream sends a heartbeat.

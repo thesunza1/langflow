@@ -342,7 +342,11 @@ function sanitizeJsonString(jsonStr: string): string {
     .replace(/,\s*NaN\s*\]/g, ", null]");
 }
 
-async function performStreamingRequest({
+/**
+ * Main-thread streaming fallback — preserves the original heartbeat + yield
+ * logic for environments where Web Workers are not available.
+ */
+async function performStreamingOnMainThread({
   method,
   url,
   onData,
@@ -352,17 +356,11 @@ async function performStreamingRequest({
   onNetworkError,
   buildController,
 }: StreamingRequestParams) {
-  const headers = {
-    "Content-Type": "application/json",
-    // this flag is fundamental to ensure server stops tasks when client disconnects
-    Connection: "close",
-  };
-
   const params: RequestInit = {
     method: method,
-    headers: headers,
+    headers: { "Content-Type": "application/json" },
     signal: buildController.signal,
-    credentials: getFetchCredentials(),
+    credentials: "include",
   };
   if (body) {
     params.body = JSON.stringify(body);
@@ -385,10 +383,10 @@ async function performStreamingRequest({
     const reader = response.body.getReader();
     let lastHeartbeat = Date.now();
     while (true) {
-      // Yield to browser event loop every 4s to prevent "page unresponsive"
+      // Yield to browser rendering cycle every 500ms
       const now = Date.now();
-      if (now - lastHeartbeat >= 4000) {
-        await new Promise((resolve) => setTimeout(resolve, 0));
+      if (now - lastHeartbeat >= 500) {
+        await new Promise((resolve) => requestAnimationFrame(resolve));
         lastHeartbeat = now;
       }
       const { done, value } = await readWithTimeout(
@@ -402,25 +400,22 @@ async function performStreamingRequest({
       const decodedChunk = textDecoder.decode(value);
       const all = decodedChunk.split("\n\n");
 
-      // Parse all complete events from this chunk first
       const parsedEvents: object[] = [];
-      for (const string of all) {
-        if (string.endsWith("}")) {
-          const allString = current.join("") + string;
+      for (const str of all) {
+        if (str.endsWith("}")) {
+          const allString = current.join("") + str;
           try {
             const sanitizedJson = sanitizeJsonString(allString);
             parsedEvents.push(JSON.parse(sanitizedJson));
             current = [];
           } catch (_e) {
-            current.push(string);
+            current.push(str);
           }
         } else {
-          current.push(string);
+          current.push(str);
         }
       }
 
-      // Dispatch: batch callback processes all chunk events at once,
-      // otherwise fall back to per-event processing.
       if (onDataBatch && parsedEvents.length > 0) {
         const shouldContinue = await onDataBatch(parsedEvents);
         if (!shouldContinue) {
@@ -436,6 +431,7 @@ async function performStreamingRequest({
           }
         }
       }
+      await new Promise((resolve) => requestAnimationFrame(resolve));
     }
     if (current.length > 0) {
       const allString = current.join("");
@@ -454,4 +450,130 @@ async function performStreamingRequest({
   }
 }
 
+
+async function performStreamingRequest({
+  method,
+  url,
+  onData,
+  onDataBatch,
+  body,
+  onError,
+  onNetworkError,
+  buildController,
+}: StreamingRequestParams) {
+  // Web Worker path — SSE stream is read + parsed in a background thread
+  // so the main thread is never blocked by stream processing.
+  // Falls back to main-thread streaming when Workers are unavailable.
+  let worker: Worker | null = null;
+  const useWorker = typeof Worker !== "undefined";
+
+  if (useWorker) {
+    try {
+      worker = new Worker(new URL("./sse-worker.ts", import.meta.url), {
+        type: "module",
+      });
+    } catch {
+      worker = null;
+    }
+  }
+
+  if (!worker) {
+    // Fallback: main-thread streaming
+    return performStreamingOnMainThread({
+      method,
+      url,
+      onData,
+      onDataBatch,
+      body,
+      onError,
+      onNetworkError,
+      buildController,
+    });
+  }
+
+  // === Web Worker path ===
+  return new Promise<void>((resolve, reject) => {
+    const cleanup = () => {
+      if (worker) {
+        worker.terminate();
+        worker = null;
+      }
+    };
+
+    worker.onmessage = async (e: MessageEvent) => {
+      const msg = e.data;
+      try {
+        switch (msg.type) {
+          case "events": {
+            if (onDataBatch) {
+              const cont = await onDataBatch(msg.data);
+              if (!cont) {
+                worker?.postMessage({ type: "abort" });
+                cleanup();
+                resolve();
+              }
+            }
+            break;
+          }
+          case "event": {
+            if (onData) {
+              const cont = await onData(msg.data);
+              if (!cont) {
+                worker?.postMessage({ type: "abort" });
+                cleanup();
+                resolve();
+              }
+            }
+            break;
+          }
+          case "done":
+            cleanup();
+            resolve();
+            break;
+          case "error":
+            if (msg.statusCode) {
+              onError?.(msg.statusCode);
+            } else if (onNetworkError) {
+              onNetworkError(new Error(msg.message || "Stream error"));
+            }
+            cleanup();
+            resolve();
+            break;
+          case "aborted":
+            cleanup();
+            resolve();
+            break;
+        }
+      } catch (err) {
+        cleanup();
+        reject(err);
+      }
+    };
+
+    worker.onerror = (err) => {
+      if (onNetworkError) {
+        onNetworkError(new Error(err.message));
+      }
+      cleanup();
+      resolve();
+    };
+
+    // Wire up the build controller abort to the worker
+    const onAbort = () => {
+      worker?.postMessage({ type: "abort" });
+      cleanup();
+      resolve();
+    };
+    if (buildController.signal.aborted) {
+      onAbort();
+      return;
+    }
+    buildController.signal.addEventListener("abort", onAbort, { once: true });
+
+    // Start the worker
+    worker.postMessage({ type: "start", method, url, body });
+  });
+}
+
 export { api, ApiInterceptor, performStreamingRequest };
+

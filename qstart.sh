@@ -54,7 +54,6 @@ echo "════════════════════════�
 echo "  Open http://localhost:$PORT"
 echo "  (còn nhớ AGENTS.md)"
 echo "═══════════════════════════════════════════════════════"
-LANGFLOW_SKIP_AUTH_AUTO_LOGIN=true "$VENV/bin/python" -m uvicorn \
-    --factory langflow.main:create_app \
-    --host 0.0.0.0 --port "$PORT" \
-    --loop asyncio --workers 1
+UV_PROJECT_ENVIRONMENT="$VENV" LANGFLOW_SKIP_AUTH_AUTO_LOGIN=true "$VENV/bin/langflow" run \
+    --frontend-path src/backend/base/langflow/frontend \
+    --port "$PORT" --host 0.0.0.0
