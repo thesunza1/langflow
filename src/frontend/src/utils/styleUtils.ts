@@ -481,6 +481,7 @@ export const SIDEBAR_BUNDLES = [
   { display_name: "LangChain", name: "langchain_utilities", icon: "LangChain" },
   { display_name: "LangWatch", name: "langwatch", icon: "Langwatch" },
   { display_name: "LiteLLM", name: "litellm", icon: "LiteLLM" },
+  { display_name: "Llama Vision", name: "llama", icon: "eye" },
   { display_name: "LMStudio", name: "lmstudio", icon: "LMStudio" },
   { display_name: "MariTalk", name: "maritalk", icon: "Maritalk" },
   { display_name: "Mem0", name: "mem0", icon: "Mem0" },

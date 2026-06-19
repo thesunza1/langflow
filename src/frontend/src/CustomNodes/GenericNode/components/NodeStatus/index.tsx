@@ -302,7 +302,10 @@ export default function NodeStatus({
   const stopBuilding = useFlowStore((state) => state.stopBuilding);
 
   const handleClickRun = () => {
-    setFlowPool({});
+    // Only clear this node's output, preserve other nodes' outputs
+    const pool = { ...useFlowStore.getState().flowPool };
+    delete pool[nodeId];
+    setFlowPool(pool);
 
     if (BuildStatus.BUILDING === buildStatus && isHovered) {
       stopBuilding();

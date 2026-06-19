@@ -324,6 +324,17 @@ start_ocr_worker: ## start the OCR worker daemon (pre-loads PaddleOCR)
 stop_ocr_worker: ## stop the OCR worker daemon
 	@bash scripts/stop_ocr_worker.sh
 
+# Llama Worker targets
+LLAMA_WORKER_PORT ?= 18766
+LLAMA_API_PORT ?= 18080
+
+start_llama_worker: ## start the Llama Vision worker daemon (Qwen3.5-2B-VL via llama.cpp)
+	@echo "Starting Llama Worker on port $(LLAMA_WORKER_PORT)...";
+	bash scripts/start_llama_worker.sh --port $(LLAMA_WORKER_PORT) --api-port $(LLAMA_API_PORT)
+
+stop_llama_worker: ## stop the Llama Vision worker daemon
+	@bash scripts/stop_llama_worker.sh
+
 build_and_run: setup_env ## build the project and run it
 	$(call CLEAR_DIRS,dist src/backend/base/dist)
 	make build

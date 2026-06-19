@@ -12,6 +12,7 @@ import FilesRendererComponent from "@/modals/fileManagerModal/components/filesRe
 import useFileSizeValidator from "@/shared/hooks/use-file-size-validator";
 import { cn } from "@/utils/utils";
 import useAlertStore from "../../../../../stores/alertStore";
+import useFlowStore from "../../../../../stores/flowStore";
 import useFlowsManagerStore from "../../../../../stores/flowsManagerStore";
 import IconComponent, {
   ForwardedIconComponent,
@@ -31,6 +32,7 @@ export default function InputFileComponent({
   editNode = false,
   placeholder,
   allowFolderSelection = false,
+  nodeId,
 }: InputProps<string, FileComponentType> & {
   allowFolderSelection?: boolean;
 }): JSX.Element {
@@ -94,6 +96,11 @@ export default function InputFileComponent({
   const handleFileChange = useCallback(
     (event: React.ChangeEvent<HTMLInputElement> | ClipboardEvent) => {
       if ("clipboardData" in event) {
+        // Only process paste if this component\'s node is selected
+        if (nodeId) {
+          const selectedNode = useFlowStore.getState().getNode(nodeId);
+          if (!selectedNode?.selected) return;
+        }
         // Nếu modal đang mở, để DragFilesComponent xử lý (tránh duplicate upload)
         const dialog = (event.target as HTMLElement)?.closest(
           '[role="dialog"]',

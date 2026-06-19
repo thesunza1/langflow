@@ -1,0 +1,27 @@
+[project]
+name = "lfx-llama"
+version = "0.1.0"
+description = "Llama Vision component using Qwen3.5-2B-VL via llama.cpp for image description."
+readme = "README.md"
+requires-python = ">=3.10,<3.15"
+license = { text = "MIT" }
+authors = [
+    { name = "Langflow", email = "contact@langflow.org" },
+]
+keywords = ["langflow", "lfx", "extension", "bundle", "llama", "vision", "qwen"]
+
+dependencies = [
+    "lfx>=1.10.0.dev0,<2.0.0",
+    "pillow>=10.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/langflow-ai/langflow"
+Repository = "https://github.com/langflow-ai/langflow"
+
+[project.entry-points."langflow.extensions"]
+lfx-llama = "lfx_llama"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

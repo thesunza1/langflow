@@ -364,6 +364,16 @@ Stop the worker when done:
 make stop_ocr_worker
 ```
 
+Start the Llama Vision worker for vision capabilities (optional, requires a GPU):
+```bash
+make start_llama_worker
+```
+
+Stop it when done:
+```bash
+make stop_llama_worker
+```
+
 **Troubleshooting** — If port 7860 is occupied:
 ```bash
 lsof -i :7860          # find the PID
@@ -385,6 +395,12 @@ Requires **three terminals** (or a terminal multiplexer like tmux).
    This pre-loads PaddleOCR in a background TCP server on port 18765.
    The backend component will discover it automatically on first use.
    Stop with `make stop_ocr_worker` when done.
+
+   **Llama Vision (optional)** — start a fourth terminal for vision capabilities:
+   ```bash
+   make start_llama_worker
+   ```
+   This pre-loads Qwen3.5-2B-VL via llama.cpp on port 18766. Stop with `make stop_llama_worker`.
 
 1. **Terminal 1 — Backend** (FastAPI with auto-reload on port 7860):
    ```bash
