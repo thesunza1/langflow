@@ -349,40 +349,50 @@ Commit all changes to the local git repository with a structured message.
 
 ### qstart — Production Launch
 
-Single-command production launch. Builds the frontend and starts the OCR worker
-in parallel (worker loads GPU + models during build), then starts the server.
+Build frontend, start workers, run production server.
 
+```bash
+./qstart.sh
+```
+
+Or via Make:
 ```bash
 make qstart
 ```
 
-After the server banner appears, OCR completes in **~0.5s** (GPU CUDA) because
-the worker was pre-loaded with models from `models/ocr/`.
+Or use a different port:
+```bash
+PORT=7861 ./qstart.sh
+```
 
-Stop the worker when done:
+Stop workers when done:
 ```bash
 make stop_ocr_worker
-```
-
-Start the Llama Vision worker for vision capabilities (optional, requires a GPU):
-```bash
-make start_llama_worker
-```
-
-Stop it when done:
-```bash
 make stop_llama_worker
 ```
 
+### qstart_dev — Dev Server (Hot Reload)
+
+One-command launch for development with hot reload:
+
+```bash
+./qstart_dev.sh
+```
+
+This starts (if not already running):
+- **OCR Worker** on port 18765
+- **Llama Worker** on port 18766
+- **Backend** (uvicorn --reload) on port 7860
+- **Frontend** (Vite HMR) on port 3000
+
+Press `Ctrl+C` to stop all services.
+
 **Troubleshooting** — If port 7860 is occupied:
 ```bash
-lsof -i :7860          # find the PID
-kill -9 <PID>          # kill the old process
+PORT=7861 ./qstart_dev.sh
 ```
-Or use a different port:
-```bash
-LFX_OCR_WORKER_PORT=18766 make qstart PORT=7861
-```
+
+**Note:** Unlike `qstart`, there is no production build step. The frontend loads unbundled modules from Vite's dev server, which gives faster iteration but higher memory usage and browser DevTools noise.
 
 ### qstart_dev — Dev Server (Hot Reload)
 
