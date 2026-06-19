@@ -383,7 +383,14 @@ async function performStreamingRequest({
       return;
     }
     const reader = response.body.getReader();
+    let lastHeartbeat = Date.now();
     while (true) {
+      // Yield to browser event loop every 4s to prevent "page unresponsive"
+      const now = Date.now();
+      if (now - lastHeartbeat >= 4000) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        lastHeartbeat = now;
+      }
       const { done, value } = await readWithTimeout(
         reader,
         STREAM_TIMEOUT_MS,
