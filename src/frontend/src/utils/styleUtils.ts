@@ -416,6 +416,16 @@ export const SIDEBAR_CATEGORIES = [
     name: "codex_exec",
     icon: "Terminal",
   },
+  {
+    display_name: "sidebar.category.llamaVision",
+    name: "llama",
+    icon: "eye",
+  },
+  {
+    display_name: "sidebar.category.ocrPaddle",
+    name: "paddleocr",
+    icon: "file-text",
+  },
 ];
 
 export const SIDEBAR_BUNDLES = [
@@ -481,7 +491,6 @@ export const SIDEBAR_BUNDLES = [
   { display_name: "LangChain", name: "langchain_utilities", icon: "LangChain" },
   { display_name: "LangWatch", name: "langwatch", icon: "Langwatch" },
   { display_name: "LiteLLM", name: "litellm", icon: "LiteLLM" },
-  { display_name: "Llama Vision", name: "llama", icon: "eye" },
   { display_name: "LMStudio", name: "lmstudio", icon: "LMStudio" },
   { display_name: "MariTalk", name: "maritalk", icon: "Maritalk" },
   { display_name: "Mem0", name: "mem0", icon: "Mem0" },
@@ -529,7 +538,6 @@ export const SIDEBAR_BUNDLES = [
   { display_name: "Yahoo! Finance", name: "yahoosearch", icon: "trending-up" },
   { display_name: "YouTube", name: "youtube", icon: "YouTube" },
   { display_name: "Zep", name: "zep", icon: "ZepMemory" },
-  { display_name: "OCR Paddle", name: "paddleocr", icon: "file-text" },
   { display_name: "VL Images", name: "vlimages", icon: "image" },
 ];
 

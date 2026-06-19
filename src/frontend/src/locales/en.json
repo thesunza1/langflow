@@ -742,6 +742,8 @@
   "sidebar.category.textSplitters": "Text Splitters",
   "sidebar.category.toolkits": "Toolkits",
   "sidebar.category.codexExec": "Codex Exec",
+  "sidebar.category.llamaVision": "Llama Vision",
+  "sidebar.category.ocrPaddle": "OCR Paddle",
   "sidebar.components": "Danh sách components",
   "sidebar.componentSettings": "Component settings",
   "sidebar.bundles": "Bundles",
