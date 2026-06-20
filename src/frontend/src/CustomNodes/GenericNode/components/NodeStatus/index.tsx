@@ -110,6 +110,7 @@ export default function NodeStatus({
   const edges = useFlowStore((state) => state.edges);
   const flowBuildStatus = useFlowStore((state) => state.flowBuildStatus);
   const abortBuildInstance = useFlowStore((state) => state.abortBuildInstance);
+  const getBuildInstancesForNode = useFlowStore((state) => state.getBuildInstancesForNode);
 
   const postTemplateValue = usePostTemplateValue({
     parameterId: nodeAuth?.name ?? "auth",
@@ -400,6 +401,31 @@ export default function NodeStatus({
     if (BuildStatus.BUILDING === buildStatus && isHovered) {
       return t("node.stopBuild");
     }
+    // Check if any build instances are running/pending for this node
+    const nodeBuilds = getBuildInstancesForNode(nodeId);
+    if (nodeBuilds.length > 0) {
+      return (
+        <div className="flex flex-col gap-1 py-1">
+          {nodeBuilds.map((inst) => {
+            const statusIcon = inst.status === "running" ? "●" : "○";
+            const statusColor = inst.status === "running" ? "text-green-500" : "text-yellow-500";
+            const statusLabel = inst.status === "running" ? "đang chạy" : "đang chờ";
+            const targetLabel = inst.stopNodeId
+              ? inst.stopNodeId.split("-")[0].split("@")[0].split(":").pop()
+              : "?";
+            return (
+              <div key={inst.buildId} className="flex items-center gap-2 text-xs">
+                <span className={statusColor}>{statusIcon}</span>
+                <span>
+                  Build #{inst.buildId.slice(0, 6)} → {targetLabel}
+                </span>
+                <span className="text-muted-foreground">({statusLabel})</span>
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
     return t("node.runComponent");
   };
 
@@ -602,7 +628,7 @@ export default function NodeStatus({
               onMouseEnter={() => setIsHovered(true)}
               onMouseLeave={() => setIsHovered(false)}
               onClick={handleClickRun}
-              className="-m-0.5"
+              className="-m-0.5 relative"
             >
               <Button unstyled className="nodrag button-run-bg group">
                 <div data-testid={`button_run_` + display_name.toLowerCase()}>
@@ -613,6 +639,15 @@ export default function NodeStatus({
                   />
                 </div>
               </Button>
+              {/* Queue indicator — show pending count for this node */}
+              {getBuildInstancesForNode(nodeId).filter(b => b.status === "pending").length > 0 && (
+                <div className="absolute -top-0.5 -right-0.5 h-3 w-3 rounded-full bg-yellow-500 flex items-center justify-center"
+                     title="Build đang chờ">
+                  <span className="text-[8px] font-bold text-white leading-none">
+                    {getBuildInstancesForNode(nodeId).filter(b => b.status === "pending").length}
+                  </span>
+                </div>
+              )}
             </div>
           </ShadTooltip>
         )}

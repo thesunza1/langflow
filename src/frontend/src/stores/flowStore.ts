@@ -459,6 +459,9 @@ const useFlowStore = create<FlowStoreType>((set, get) => ({
   getBuildInstancesForNode: (nodeId) => {
     return Object.values(get().buildInstances).filter((inst) => {
       if (inst.status !== "running" && inst.status !== "pending") return false;
+      // Check by stopNodeId first (available before verticesBuild is populated)
+      if (inst.stopNodeId === nodeId) return true;
+      // Then check verticesBuild for detailed vertex tracking
       const vertices = inst.verticesBuild?.verticesIds ?? [];
       return vertices.includes(nodeId);
     });

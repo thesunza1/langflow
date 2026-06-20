@@ -71,10 +71,11 @@
   </div>
 
   <div class="highlight">
-    <strong>Luồng thực tế khi click Run ở C khi B đang chạy:</strong><br>
-    1. <code>handleClickRun</code> → <code>if (isBuilding) return;</code> → <strong>click bị nuốt im lặng</strong><br>
-    2. Người dùng không thấy feedback gì, tưởng click không hoạt động<br>
-    3. Chỉ khi build B kết thúc, click Run ở C mới có tác dụng
+    <strong>Luồng thực tế sau multi-build khi click Run C khi B đang chạy:</strong><br>
+    1. <code>handleClickRun</code> → không kiểm tra <code>isBuilding</code> nữa<br>
+    2. <code>buildFlow</code> tạo BuildInstance #2 → <code>stopNodeId = C</code><br>
+    3. Conflict check: C ≠ B → <strong>không conflict → chạy song song</strong><br>
+    4. Cả 2 SSE connections hoạt động độc lập
   </div>
 
   <h3>Phạm vi</h3>
@@ -380,7 +381,10 @@ onBuildComplete() {
   <table>
     <tr><th>Feature</th><th>Mô tả</th></tr>
     <tr><td>Build Panel</td><td>Panel nhỏ hiển thị danh sách build instances đang chạy/pending. Mỗi build hiển thị stopNode, progress, nút cancel.</td></tr>
-    <tr><td>Per-node tooltip</td><td>Hover vào node đang building → tooltip hiển thị "Build #1 (B) - đang xử lý... " , "Build #2 (D) - đang chờ..."</td></tr>
+    <tr><td>Per-node tooltip</td><td>Hover vào node → tooltip hiển thị build instances có chứa node đó:<br>
+      • Nếu node đang được build: "Build #1 (B): ● đang chạy"<br>
+      • Nếu node bị conflict (queue): "Build #2 (B): ○ đang chờ"<br>
+      • Nếu 2 builds chạy song song trên 2 nhánh khác nhau: cả 2 đều "● đang chạy"</td></tr>
     <tr><td>Queue indicator</td><td>Nếu có build pending → icon nhỏ bên cạnh nút Run</td></tr>
     <tr><td>Edge color per build</td><td>Tối giản: chỉ hiển thị 1 trạng thái edge (running nếu bất kỳ build nào đang chạy trên edge đó)</td></tr>
   </table>
@@ -430,10 +434,11 @@ onBuildComplete() {
 Phase 1: Store & Types         ─ 2-3h  [không phụ thuộc]
 Phase 2: Build Flow Refactor   ─ 3-4h  [sau Phase 1]
 Phase 3: NodeStatus & UI       ─ 3-4h  [sau Phase 1, 2]
-Phase 4: Visual Indicators     ─ 2h    [sau Phase 3]
-Phase 5: Backend Verify + Test ─ 2-3h  [sau tất cả]
+Phase 4: Per-node tooltip + Queue indicator ─ 1-2h [có thể làm sau]
+Phase 5: Testing ─ 4-6h
 -------------------------------------------------
-Tổng: ~12-16h (code + test)
+Thực tế đã làm: ~6h (2 commits)
+Còn lại: ~5-8h
   </div>
 </div>
 
