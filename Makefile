@@ -1145,6 +1145,9 @@ qstart: ## Production Launch — build frontend, start OCR worker, start server
 	@echo "  qstart — building frontend + starting OCR worker..."
 	@echo "  (worker loads models in parallel with frontend build)"
 	@echo "═══════════════════════════════════════════════════════"
+	@echo "  Installing bundles (llama, paddleocr)..."
+	@uv run pip install -q -e src/bundles/paddleocr -e src/bundles/llama 2>/dev/null || true
+	@echo "  Done installing bundles."
 	$(MAKE) start_ocr_worker > /dev/null 2>&1 &
 	$(MAKE) build_frontend
 	@echo "  Waiting for OCR worker...";
