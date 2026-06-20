@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kế hoạch: Chạy Flow Song Song (Parallel Build Execution)</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f7fb; color: #1a1a2e; line-height: 1.6; }
+  .container { max-width: 960px; margin: 0 auto; padding: 24px; }
+  h1 { font-size: 28px; margin-bottom: 4px; color: #0f0f1a; }
+  .subtitle { color: #555; font-size: 15px; margin-bottom: 28px; }
+  .card { background: #fff; border-radius: 10px; padding: 24px; margin-bottom: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); border: 1px solid #e8ecf2; }
+  .card h2 { font-size: 18px; margin-bottom: 12px; color: #2a2a4a; padding-bottom: 8px; border-bottom: 1px solid #eef1f6; }
+  .card h3 { font-size: 15px; margin: 16px 0 8px; color: #3a3a5a; }
+  .card h4 { font-size: 14px; margin: 12px 0 4px; color: #4a4a6a; }
+  .card p, .card li { font-size: 14px; }
+  .card ul, .card ol { padding-left: 20px; }
+  .card li { margin-bottom: 6px; }
+  .code { background: #f0f2f6; border-radius: 6px; padding: 12px 16px; font-family: 'JetBrains Mono', monospace; font-size: 12px; overflow-x: auto; margin: 10px 0; position: relative; }
+  .diagram { background: #f8faff; border: 1px solid #dde3ed; border-radius: 8px; padding: 20px; margin: 16px 0; text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 13px; }
+  .tag { display: inline-block; background: #e8ecf6; border-radius: 4px; padding: 2px 8px; font-size: 11px; font-weight: 600; color: #444; }
+  .tag.backend { background: #dbeafe; color: #1e40af; }
+  .tag.frontend { background: #fce7f3; color: #9d174d; }
+  .tag.infra { background: #dcfce7; color: #166534; }
+  .tag.core { background: #fef3c7; color: #92400e; }
+  .tag.critical { background: #fee2e2; color: #b91c1c; }
+  .phase { display: inline-block; background: #6366f1; color: #fff; border-radius: 20px; padding: 1px 12px; font-size: 11px; font-weight: 700; margin-right: 6px; }
+  .dep { display: inline-block; background: #f8f8fc; border: 1px dashed #c8c8dc; border-radius: 4px; padding: 2px 8px; font-size: 11px; margin: 1px; }
+  .flow-diagram { display: flex; justify-content: center; gap: 60px; margin: 20px 0; flex-wrap: wrap; }
+  .flow-diagram > div { display: flex; flex-direction: column; align-items: center; }
+  .flow-diagram .node { border: 2px solid #6366f1; border-radius: 8px; padding: 10px 20px; background: #eef0ff; font-weight: 600; }
+  .flow-diagram .arrow { font-size: 20px; color: #888; }
+  .flow-diagram .run-badge { background: #22c55e; color: #fff; border-radius: 12px; padding: 2px 10px; font-size: 11px; margin-top: 4px; }
+  .highlight { background: #fffbe6; border-left: 3px solid #f59e0b; padding: 8px 12px; border-radius: 4px; margin: 10px 0; font-size: 13px; }
+  table { width:100%; border-collapse: collapse; font-size: 13px; margin: 10px 0; }
+  table th { background:#f0f2f6; padding:6px 8px; text-align:left; border-bottom:1px solid #ddd; }
+  table td { padding:6px 8px; border-bottom:1px solid #eee; vertical-align: top; }
+  .status-yes { color: #16a34a; font-weight: 700; }
+  .status-no { color: #dc2626; font-weight: 700; }
+  .status-warn { color: #d97706; font-weight: 700; }
+  risk { display: inline-block; background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; border-radius: 4px; padding: 0 6px; font-size: 11px; font-weight: 600; }
+  .check { color: #16a34a; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>Kế hoạch chi tiết: Chạy Flow Song Song</h1>
+<p class="subtitle">Cho phép nhiều luồng build/run đồng thời trên cùng một flow — dành cho các nhánh độc lập A→B và C→D (cập nhật sau review)</p>
+
+<!-- MỤC TIÊU -->
+<div class="card">
+  <h2>1. Mục tiêu &amp; Phạm vi</h2>
+
+  <h3>Vấn đề hiện tại</h3>
+  <p>Khi flow có 2 nhánh độc lập:</p>
+  <div class="flow-diagram">
+    <div>
+      <div class="node">A (ChatInput)</div>
+      <div>→</div>
+      <div class="node">B (Component)</div>
+      <div class="run-badge">Run B → gọi API build</div>
+    </div>
+    <div>
+      <div class="node">C (TextInput)</div>
+      <div>→</div>
+      <div class="node">D (Component)</div>
+      <div class="run-badge">Run C → bị chặn</div>
+    </div>
+  </div>
+
+  <div class="highlight">
+    <strong>Luồng thực tế khi click Run ở C khi B đang chạy:</strong><br>
+    1. <code>handleClickRun</code> → <code>if (isBuilding) return;</code> → <strong>click bị nuốt im lặng</strong><br>
+    2. Người dùng không thấy feedback gì, tưởng click không hoạt động<br>
+    3. Chỉ khi build B kết thúc, click Run ở C mới có tác dụng
+  </div>
+
+  <h3>Phạm vi</h3>
+  <ul>
+    <li><strong>Trong:</strong> Frontend store, build queue, event handling, giao diện per-build status</li>
+    <li><strong>Ngoài:</strong> Graph engine core (lfx), caching strategy, component API</li>
+  </ul>
+</div>
+
+<!-- PHÂN TÍCH KIẾN TRÚC -->
+<div class="card">
+  <h2>2. Phân tích kiến trúc hiện tại (verified code review)</h2>
+
+  <h3>2.1 Rào cản Frontend — chi tiết từng state</h3>
+  <table>
+    <tr><th>State variable</th><th>Type</th><th>Vấn đề với parallel</th></tr>
+    <tr>
+      <td><code>isBuilding</code></td>
+      <td><code>boolean</code></td>
+      <td><span class="status-no">❌</span> Chỉ 1 build duy nhất — line 314 chặn tuyệt đối</td>
+    </tr>
+    <tr>
+      <td><code>verticesBuild</code></td>
+      <td><code>{verticesIds, verticesLayers, runId} | null</code></td>
+      <td><span class="status-no">❌</span> Ghi đè lẫn nhau giữa các build</td>
+    </tr>
+    <tr>
+      <td><code>flowBuildStatus</code></td>
+      <td><code>Record&lt;vertexId, {status, timestamp}&gt;</code></td>
+      <td><span class="status-no">❌</span> Build 1 set BUILDING → Build 2 đè thành TO_BUILD</td>
+    </tr>
+    <tr>
+      <td><code>flowPool</code></td>
+      <td><code>Record&lt;vertexId, data&gt;</code></td>
+      <td><span class="status-no">❌</span> Cả 2 build cùng ghi vào pool chung</td>
+    </tr>
+    <tr>
+      <td><code>buildControllerSet</code></td>
+      <td><code>Set&lt;AbortController&gt;</code></td>
+      <td><span class="status-yes">✅</span> Đã hỗ trợ multiple controllers — nhưng <code>stopBuilding</code> abort tất cả</td>
+    </tr>
+    <tr>
+      <td><code>buildQueue</code></td>
+      <td><code>Array</code></td>
+      <td><span class="status-warn">⚠️</span> Đã định nghĩa nhưng <strong>KHÔNG BAO GIỜ được push</strong> — không có code nào gọi <code>buildQueue.push()</code></td>
+    </tr>
+    <tr>
+      <td><code>edges (animated/running)</code></td>
+      <td><code>Edge[]</code></td>
+      <td><span class="status-no">❌</span> <code>setEdgesRunningByNodes</code> là global — 2 build cùng set animation lên edges</td>
+    </tr>
+  </table>
+
+  <h4>Code xác nhận: buildQueue không bao giờ được push</h4>
+  <div class="code">
+// src/frontend/src/stores/flowStore.ts — buildQueue CHỈ được READ và SLICE
+processNextBuildQueue: async () => {
+  const queue = get().buildQueue;
+  if (queue.length > 0) {
+    const nextParams = queue[0];
+    set({ buildQueue: queue.slice(1) });  // ← chỉ shift, không push
+    await get().buildFlow(nextParams);
+  }
+},
+
+// buildQueue.push / buildQueue.concat KHÔNG tồn tại trong codebase
+// → queue-based scheduling đã được design nhưng chưa implement
+  </div>
+
+  <h3>2.2 Backend — verified readiness</h3>
+  <table>
+    <tr><th>Component</th><th>Trạng thái</th></tr>
+    <tr><td><code>JobQueueService.create_queue()</code></td><td><span class="status-yes">✅</span> Tạo queue riêng per job_id</td></tr>
+    <tr><td><code>JobQueueService.start_job()</code></td><td><span class="status-yes">✅</span> Task riêng per job, asyncio event loop shared</td></tr>
+    <tr><td><code>generate_flow_events()</code></td><td><span class="status-yes">✅</span> Graph + run_id riêng mỗi build</td></tr>
+    <tr><td><code>chat_service.set_cache("{run_id}:{key}")</code></td><td><span class="status-yes">✅</span> Cache prefix bằng run_id → isolated</td></tr>
+    <tr><td><code>chat_service.set_cache("{flow_id}:{graph.run_id}", graph)</code></td><td><span class="status-yes">✅</span> Graph state isolated per run_id</td></tr>
+    <tr><td>Concurrency limit / semaphore</td><td><span class="status-yes">✅</span> Không có — asyncio event loop xử lý tự nhiên</td></tr>
+    <tr><td><code>chat_service.async_cache_locks["{flow_id}:{run_id}"]</code></td><td><span class="status-yes">✅</span> Lock riêng per run_id</td></tr>
+  </table>
+
+  <div class="highlight">
+    <strong>Kết luận backend:</strong> Backend hoàn toàn sẵn sàng. Không cần thay đổi backend code. Mọi rào cản đều ở frontend.
+  </div>
+</div>
+
+<!-- CONCEPT SOLUTION -->
+<div class="card">
+  <h2>3. Giải pháp kiến trúc — Multi-build Instance Model</h2>
+
+  <h3>3.1 Data Model</h3>
+  <div class="code">
+// Mỗi lần click Run → một BuildInstance
+
+interface BuildInstance {
+  buildId: string;                              // UUID
+  stopNodeId: string;                           // Component được click
+  startNodeId?: string;                         // (nếu có)
+
+  status: 'pending' | 'running' | 'completed' | 'error' | 'cancelled';
+
+  // Per-instance state (thay thế global verticesBuild)
+  verticesBuild: {
+    verticesIds: string[];
+    verticesLayers: VertexLayerElementType[][];
+    verticesToRun: string[];
+    runId: string;                              // run_id từ backend
+  } | null;
+
+  // Per-instance build status (thay thế global flowBuildStatus)
+  flowBuildStatus: Record&lt;string, { status: string; timestamp?: string }&gt;;
+
+  // Per-instance flow pool (thay thế global flowPool)
+  flowPool: Record&lt;string, VertexBuildTypeAPI&gt;;
+
+  // Build controller để cancel riêng
+  abortController: AbortController;
+
+  // Callbacks vẫn giữ nguyên nhưng cập nhật per-instance state
+  // thay vì global state
+}
+  </div>
+
+  <h3>3.2 Zustand Store thay đổi</h3>
+  <div class="code">
+// === THAY THẾ ===
+isBuilding: boolean;
+verticesBuild: IVerticesBuild | null;
+flowBuildStatus: Record&lt;string, ...&gt;;
+flowPool: Record&lt;string, ...&gt;;
+
+// === BẰNG ===
+buildInstances: Map&lt;string, BuildInstance&gt;;
+
+// Helper selectors
+isAnyBuilding: () => boolean;
+// Trả về true nếu bất kỳ build instance nào có status 'running'
+
+getBuildingInstancesForNode(nodeId: string): BuildInstance[];
+// Trả về tất cả build instances có chứa nodeId trong verticesToRun
+
+getBuildStatusForNode(nodeId: string): BuildStatus;
+// Merge trạng thái từ tất cả build instances có chứa node đó
+// Nếu bất kỳ instance nào đang BUILDING node → BUILDING
+  </div>
+
+  <h3>3.3 Luồng Click Run mới</h3>
+  <div class="code">
+handleClickRun() {
+  // 1. Tạo BuildInstance mới
+  const buildId = crypto.randomUUID();
+  const instance: BuildInstance = {
+    buildId,
+    stopNodeId: nodeId,
+    status: 'pending',
+    verticesBuild: null,
+    flowBuildStatus: {},
+    flowPool: {},
+    abortController: new AbortController(),
+  };
+
+  // 2. Kiểm tra conflict với build instances đang chạy
+  const conflict = findConflictingBuild(instance, runningInstances);
+  if (conflict) {
+    // Nếu conflict → queue lại (pending), sẽ chạy sau
+    queueBuildInstance(instance);
+    // Hiển thị UI indicator "1 build pending"
+    return;
+  }
+
+  // 3. Nếu không conflict → chạy ngay
+  instance.status = 'running';
+  addBuildInstance(instance);
+  executeBuildInstance(buildId);
+}
+
+// Conflict detection: 2 build conflict nếu có chung bất kỳ vertex nào
+function findConflictingBuild(newBuild, runningBuilds) {
+  const newVertices = getVerticesForBuild(newBuild);  // Upstream của stopNodeId
+  for (const rb of runningBuilds) {
+    const rbVertices = rb.verticesBuild?.verticesIds ?? [];
+    if (newVertices.some(v => rbVertices.includes(v))) {
+      return rb;
+    }
+  }
+  return null;
+}
+
+// Khi build kết thúc → process queue
+onBuildComplete() {
+  setBuildInstanceState(buildId, 'completed');
+  processBuildQueue();  // Lấy pending instance kế tiếp, kiểm tra conflict, chạy
+}
+  </div>
+</div>
+
+<!-- IMPLEMENTATION PLAN -->
+<div class="card">
+  <h2>4. Kế hoạch Implementation chi tiết</h2>
+
+  <h3>Phase 1: <span class="tag frontend">Store</span> Backbone &amp; Types</h3>
+  <table>
+    <tr><th>File</th><th>Thay đổi</th></tr>
+    <tr>
+      <td><code>types/zustand/flow/index.ts</code></td>
+      <td>Thêm <code>BuildInstance</code> interface, thay <code>isBuilding</code> → <code>buildInstances</code>, thêm type <code>BuildStatusEnum</code></td>
+    </tr>
+    <tr>
+      <td><code>stores/flowStore.ts</code></td>
+      <td>
+        - Thay <code>isBuilding: boolean</code> → <code>buildInstances: Map&lt;string, BuildInstance&gt;</code><br>
+        - Giữ <code>isBuilding</code> như computed selector (<code>isAnyBuilding</code>) cho các component cũ<br>
+        - Thêm actions: <code>createBuildInstance</code>, <code>getBuildInstance</code>, <code>updateBuildInstance</code>, <code>deleteBuildInstance</code>, <code>queueBuildInstance</code><br>
+        - Thêm <code>processBuildQueue</code> (khác với <code>processNextBuildQueue</code> hiện tại)
+      </td>
+    </tr>
+  </table>
+  <p><strong>Retain backward compat:</strong> Giữ <code>isBuilding</code> như getter/setter cho các component chưa được refactor. <code>setIsBuilding</code> tạo/remove "default" build instance với buildId = 'default'.</p>
+
+  <h3>Phase 2: <span class="tag frontend">Build Flow</span> Refactor</h3>
+  <table>
+    <tr><th>File</th><th>Thay đổi</th></tr>
+    <tr>
+      <td><code>stores/flowStore.ts — buildFlow</code></td>
+      <td>
+        - Nhận thêm <code>buildId: string</code><br>
+        - <code>set({ flowBuildStatus: {}, latestRunningText: {} })</code> → chỉ reset per build instance<br>
+        - <code>get().setIsBuilding(true)</code> → set instance status = 'running'<br>
+        - Gọi callback với <code>buildId</code>
+      </td>
+    </tr>
+    <tr>
+      <td><code>utils/buildUtils.ts — buildFlowVertices</code></td>
+      <td>
+        - Nhận thêm <code>buildId</code><br>
+        - Các hàm <code>onBuildUpdate</code>, <code>onBuildComplete</code>, <code>onBuildError</code> callback gọi với <code>buildId</code><br>
+        - <code>onBuildUpdate</code> → <code>buildInstances[buildId].flowBuildStatus</code> thay vì <code>flowStore.flowBuildStatus</code>
+      </td>
+    </tr>
+    <tr>
+      <td><code>utils/buildUtils.ts — handleBuildUpdate</code></td>
+      <td>
+        - Nhận <code>buildId</code><br>
+        - Cập nhật <code>buildInstances[buildId].verticesBuild</code> thay vì <code>get().verticesBuild</code><br>
+        - Cập nhật <code>buildInstances[buildId].flowBuildStatus</code> thay vì <code>get().flowBuildStatus</code><br>
+        - Cập nhật <code>buildInstances[buildId].flowPool</code> thay vì <code>get().flowPool</code>
+      </td>
+    </tr>
+    <tr>
+      <td><code>utils/buildUtils.ts — end event</code></td>
+      <td>
+        - <code>onBuildComplete</code>: cập nhật build instance status = 'completed' thay vì <code>setIsBuilding(false)</code><br>
+        - <code>queryClient.invalidateQueries</code> giữ nguyên (có thể global vì là cache invalidation)<br>
+        - Gọi <code>processBuildQueue()</code> để chạy build pending kế tiếp
+      </td>
+    </tr>
+  </table>
+
+  <h3>Phase 3: <span class="tag frontend">UI</span> NodeStatus &amp; Playground</h3>
+  <table>
+    <tr><th>File</th><th>Thay đổi</th></tr>
+    <tr>
+      <td><code>CustomNodes/GenericNode/components/NodeStatus</code></td>
+      <td>
+        - <code>handleClickRun</code>: bỏ dòng <code>if (isBuilding) return</code><br>
+        - Thay bằng: tạo BuildInstance → check conflict → queue hoặc run<br>
+        - <code>isBuilding</code> selector → <code>getBuildStatusForNode(nodeId)</code> merge từ tất cả instances<br>
+        - <code>handlePlayWShortcut</code>: tương tự
+      </td>
+    </tr>
+    <tr>
+      <td><code>NodeStatus</code> — run modal</td>
+      <td>
+        - Khi có nearest built upstream → modal hỏi "Run from nearest built" hay "Full rebuild"<br>
+        - Modal cần biết build nào đang chạy để không conflict
+      </td>
+    </tr>
+    <tr>
+      <td><code>NodeStatus</code> — stop button</td>
+      <td>
+        - <code>stopBuilding()</code> gọi abort controller của build instance cụ thể<br>
+        - Hover vào node đang building → icon stop → cancel build đó<br>
+        - <code>stopBuilding()</code> cũ hỗ trợ abort tất cả hoặc abort 1 build
+      </td>
+    </tr>
+    <tr>
+      <td><code>Node edge animation</code></td>
+      <td>
+        - <code>clearAndSetEdgesRunning(nextIds)</code> cần per-build scope<br>
+        - Một edge có thể là "running" cho build 1 và "to_build" cho build 2<br>
+        - Giải pháp: ưu tiên trạng thái cao nhất (running > to_build > built)
+      </td>
+    </tr>
+    <tr>
+      <td><code>Playground/use-send-message</code></td>
+      <td>
+        - Cập nhật gọi <code>buildFlow</code> với <code>buildId</code>
+      </td>
+    </tr>
+  </table>
+
+  <h3>Phase 4: <span class="tag frontend">Visual</span> Multi-build Indicator</h3>
+  <table>
+    <tr><th>Feature</th><th>Mô tả</th></tr>
+    <tr><td>Build Panel</td><td>Panel nhỏ hiển thị danh sách build instances đang chạy/pending. Mỗi build hiển thị stopNode, progress, nút cancel.</td></tr>
+    <tr><td>Per-node tooltip</td><td>Hover vào node đang building → tooltip hiển thị "Build #1 (B) - đang xử lý... " , "Build #2 (D) - đang chờ..."</td></tr>
+    <tr><td>Queue indicator</td><td>Nếu có build pending → icon nhỏ bên cạnh nút Run</td></tr>
+    <tr><td>Edge color per build</td><td>Tối giản: chỉ hiển thị 1 trạng thái edge (running nếu bất kỳ build nào đang chạy trên edge đó)</td></tr>
+  </table>
+
+  <h3>Phase 5: <span class="tag frontend">Backend Verify</span> + <span class="tag infra">Testing</span></h3>
+  <table>
+    <tr><th>Task</th><th>Chi tiết</th></tr>
+    <tr><td>Backend verify</td><td>Xác nhận không có semaphore/rate limiter cho cùng flow. Test song song 2 API call đến /build endpoint</td></tr>
+    <tr><td>Unit tests (store)</td><td>Test conflict detection, test queue management, test state isolation</td></tr>
+    <tr><td>E2E tests</td><td>Click Run B → click Run C → verify cả 2 chạy song song. Click Run B → click Run B (conflict) → verify queue</td></tr>
+    <tr><td>Edge case tests</td><td>3 builds cùng lúc, cancel build giữa chừng, browser refresh, error trong 1 build không ảnh hưởng build kia</td></tr>
+  </table>
+</div>
+
+<!-- WIREFRAME -->
+<div class="card">
+  <h2>5. Wireframe — Giao diện Multi-build</h2>
+  <div class="diagram">
+    <pre style="text-align:left; font-size:12px;">
+┌────────────────────────────────────────────────────────────────┐
+│  Flow: My Flow                                           [Run]│
+│                                                                │
+│  ┌──────────┐           ┌──────────┐                          │
+│  │  A        │ ──────── │  B ●     │  Build #1: ● B (Running) │
+│  │ (ChatInp) │           │ (LLM)    │  Status: 3/4 vertices    │
+│  └──────────┘           └──────────┘  ┌──────────────────┐    │
+│                                       │ [×] Stop Build #1│    │
+│  ┌──────────┐           ┌──────────┐  └──────────────────┘    │
+│  │  C        │ ──────── │  D ●     │  Build #2: ● D (Running) │
+│  │ (TextInp) │           │ (Codex)  │  Status: 1/2 vertices    │
+│  └──────────┘           └──────────┘  ┌──────────────────┐    │
+│                                       │ [×] Stop Build #2│    │
+│                                       └──────────────────┘    │
+│  ┌──────────────────────────────────────────────┐              │
+│  │ ⏳ Build Queue: 1 pending                     │              │
+│  │   3. Build #3: Component E (will run after #2)│              │
+│  └──────────────────────────────────────────────┘              │
+└────────────────────────────────────────────────────────────────┘
+    </pre>
+  </div>
+</div>
+
+<!-- TIMELINE -->
+<div class="card">
+  <h2>6. Timeline &amp; Dependencies</h2>
+  <div class="code">
+Phase 1: Store & Types         ─ 2-3h  [không phụ thuộc]
+Phase 2: Build Flow Refactor   ─ 3-4h  [sau Phase 1]
+Phase 3: NodeStatus & UI       ─ 3-4h  [sau Phase 1, 2]
+Phase 4: Visual Indicators     ─ 2h    [sau Phase 3]
+Phase 5: Backend Verify + Test ─ 2-3h  [sau tất cả]
+-------------------------------------------------
+Tổng: ~12-16h (code + test)
+  </div>
+</div>
+
+<!-- FILE LIST -->
+<div class="card">
+  <h2>7. Danh sách files cần thay đổi</h2>
+  <div class="code">
+Frontend (6 files):
+  ├── src/types/zustand/flow/index.ts                    // BuildInstance type
+  ├── src/stores/flowStore.ts                             // Store refactor (core)
+  ├── src/utils/buildUtils.ts                             // Build flow with buildId
+  ├── src/CustomNodes/GenericNode/components/NodeStatus/  // handleClickRun, stop
+  ├── src/components/core/playgroundComponent/...         // use-send-message
+  └── src/constants/enums.ts                             // (nếu cần thêm enum)
+
+Backend (0 files — xác nhận không cần thay đổi)
+
+Tests:
+  ├── src/stores/__tests__/flowStore.test.ts
+  └── src/frontend/tests/ (Playwright)
+  </div>
+</div>
+
+<!-- RISKS -->
+<div class="card">
+  <h2>8. Risks &amp; Mitigations</h2>
+  <table>
+    <tr><th>Risk</th><th>Impact</th><th>Mitigation</th></tr>
+    <tr>
+      <td><risk>HIGH</risk> Shared <code>flowPool</code> trong component nào đó được đọc bởi cả 2 build cùng lúc</td>
+      <td>Data race — output sai</td>
+      <td>Flow pool cần per-build instance hoặc dùng <code>runId</code> làm key</td>
+    </tr>
+    <tr>
+      <td><risk>MED</risk> Edge animation bị conflict (build 1 build B, build 2 build D → cùng set edge animation)</td>
+      <td>Visual glitch</td>
+      <td>Merge status: running > to_build > built. Edge animation ưu tiên running</td>
+    </tr>
+    <tr>
+      <td><risk>MED</risk> Component re-render loop khi nhiều build instances cùng update state</td>
+      <td>Performance degradation</td>
+      <td>Batch updates với React 18 auto-batching. Dùng <code>useSyncExternalStore</code> cho performance-critical paths</td>
+    </tr>
+    <tr>
+      <td><risk>LOW</risk> Backend resource contention (CPU, RAM) khi nhiều build chạy song song</td>
+      <td>Chậm hơn nếu tài nguyên cạn</td>
+      <td>User đã xác nhận backend có thể xử lý. Monitor sau deploy</td>
+    </tr>
+    <tr>
+      <td><risk>LOW</risk> <code>set({ flowBuildStatus: {}, latestRunningText: {} })</code> ở đầu <code>buildFlow</code> reset state của build khác</td>
+      <td>Lost state</td>
+      <td><strong>Đã xử lý trong Phase 2:</strong> chuyển reset từ global → per-build-instance</td>
+    </tr>
+  </table>
+</div>
+
+</div>
+</body>
+</html>

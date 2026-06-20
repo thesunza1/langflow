@@ -12,6 +12,49 @@ import type { LogsLogType, VertexBuildTypeAPI } from "../../api";
 import type { ChatInputType, ChatOutputType } from "../../chat";
 import type { FlowState } from "../../tabs";
 
+
+// ─── Build Instance (multi-build support) ───────────────────────────────
+export type BuildInstanceStatus =
+  | "pending"      // Enqueued, waiting for resources
+  | "running"      // Actively building
+  | "completed"    // Successfully built all vertices
+  | "error"        // Build failed
+  | "cancelled";   // Cancelled by user
+
+export interface BuildInstance {
+  buildId: string;
+  startNodeId?: string;
+  stopNodeId?: string;
+  input_value?: string;
+  files?: string[];
+  silent?: boolean;
+  session?: string;
+  stream?: boolean;
+  status: BuildInstanceStatus;
+  /** Per-instance vertex build state (replaces global verticesBuild) */
+  verticesBuild: {
+    verticesIds: string[];
+    verticesLayers: VertexLayerElementType[][];
+    runId?: string;
+    verticesToRun: string[];
+  } | null;
+  /** Per-instance flow build status (replaces global flowBuildStatus) */
+  flowBuildStatus: {
+    [key: string]: {
+      status: BuildStatus;
+      timestamp?: string;
+    };
+  };
+  /** Per-instance flow pool (augments global flowPool) */
+  flowPool: Record<string, VertexBuildTypeAPI[]>;
+  /** AbortController for this specific build */
+  abortController: AbortController;
+  /** When the build instance was created */
+  createdAt: number;
+}
+
+// ─── End Build Instance ─────────────────────────────────────────────────
+
 export type FlowPoolObjectType = {
   timestamp: string;
   valid: boolean;
@@ -180,6 +223,53 @@ export type FlowStoreType = {
   setBuildInfo: (
     buildInfo: { error?: string[]; success?: boolean } | null,
   ) => void;
+
+  // ─── Multi-build instance API ──────────────────────────────────────────
+  /** Map of all build instances (active, pending, completed). */
+  buildInstances: Record<string, BuildInstance>;
+
+  /** Create a new build instance and add it to the map. */
+  createBuildInstance: (params: {
+    startNodeId?: string;
+    stopNodeId?: string;
+    input_value?: string;
+    files?: string[];
+    silent?: boolean;
+    session?: string;
+    stream?: boolean;
+  }) => BuildInstance;
+
+  /** Update an existing build instance. */
+  updateBuildInstance: (
+    buildId: string,
+    patch: Partial<BuildInstance>,
+  ) => void;
+
+  /** Remove a build instance from the map. */
+  deleteBuildInstance: (buildId: string) => void;
+
+  /** Get a specific build instance by id. */
+  getBuildInstance: (buildId: string) => BuildInstance | undefined;
+
+  /** True if any build instance is currently running. */
+  isAnyBuilding: () => boolean;
+
+  /** Return all build instances that include the given node in their vertices. */
+  getBuildInstancesForNode: (nodeId: string) => BuildInstance[];
+
+  /**
+   * Compute the effective build status for a node across ALL build instances.
+   * BUILDING wins over everything, then ERROR, then TO_BUILD, then BUILT.
+   */
+  getBuildStatusForNode: (nodeId: string) => BuildStatus | undefined;
+
+  /** Abort (cancel) a specific build instance. */
+  abortBuildInstance: (buildId: string) => void;
+
+  /** Process the build queue: pick the next non-conflicting pending build and run it. */
+  processBuildQueue: () => Promise<void>;
+  // ─── End multi-build instance API ──────────────────────────────────────
+
   buildQueue: Array<{
     startNodeId?: string;
     stopNodeId?: string;
@@ -238,6 +328,8 @@ export type FlowStoreType = {
   } | null;
   updateBuildStatus: (nodeIdList: string[], status: BuildStatus) => void;
   revertBuiltStatusFromBuilding: () => void;
+  latestRunningText: Record<string, string[]>;
+  setLatestRunningText: (nodeId: string, text: string) => void;
   flowBuildStatus: {
     [key: string]: {
       status: BuildStatus;

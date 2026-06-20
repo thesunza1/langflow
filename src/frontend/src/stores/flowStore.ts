@@ -32,6 +32,7 @@ import type {
   targetHandleType,
 } from "../types/flow";
 import type {
+  BuildInstance,
   ComponentsToUpdateType,
   FlowStoreType,
   VertexLayerElementType,
@@ -204,6 +205,7 @@ const useFlowStore = create<FlowStoreType>((set, get) => ({
   reactFlowInstance: null,
   lastCopiedSelection: null,
   flowPool: {},
+  latestRunningText: {},
   setInputs: (inputs) => {
     set({ inputs });
   },
@@ -369,16 +371,22 @@ const useFlowStore = create<FlowStoreType>((set, get) => ({
   },
   setIsBuilding: (isBuilding) => {
     const current = get();
+    // When a build completes, check if other build instances are still running
+    const effectiveBuilding = isBuilding || (
+      !isBuilding && Object.values(get().buildInstances).some(
+        (inst) => inst.status === "running"
+      )
+    );
     set({
-      isBuilding,
+      isBuilding: effectiveBuilding,
       // Reset buildStartTime and buildDuration when a new build begins
       buildStartTime:
-        isBuilding && !current.isBuilding ? null : current.buildStartTime,
+        effectiveBuilding && !current.isBuilding ? null : current.buildStartTime,
       buildDuration:
-        isBuilding && !current.isBuilding ? null : current.buildDuration,
-      // Clear building session when build ends
-      buildingFlowId: !isBuilding ? null : current.buildingFlowId,
-      buildingSessionId: !isBuilding ? null : current.buildingSessionId,
+        effectiveBuilding && !current.isBuilding ? null : current.buildDuration,
+      // Clear building session only when no builds are active
+      buildingFlowId: effectiveBuilding ? current.buildingFlowId : null,
+      buildingSessionId: effectiveBuilding ? current.buildingSessionId : null,
     });
   },
   setBuildStartTime: (time) => {
@@ -398,6 +406,127 @@ const useFlowStore = create<FlowStoreType>((set, get) => ({
       await get().buildFlow(nextParams);
     }
   },
+
+  // ─── Multi-build instance API ──────────────────────────────────────────
+  createBuildInstance: (params) => {
+    const buildId = crypto.randomUUID();
+    const instance: BuildInstance = {
+      buildId,
+      ...params,
+      status: "pending",
+      verticesBuild: null,
+      flowBuildStatus: {},
+      flowPool: {},
+      abortController: new AbortController(),
+      createdAt: Date.now(),
+    };
+    set((state) => ({
+      buildInstances: { ...state.buildInstances, [buildId]: instance },
+    }));
+    return instance;
+  },
+
+  updateBuildInstance: (buildId, patch) => {
+    set((state) => {
+      const existing = state.buildInstances[buildId];
+      if (!existing) return state;
+      return {
+        buildInstances: {
+          ...state.buildInstances,
+          [buildId]: { ...existing, ...patch },
+        },
+      };
+    });
+  },
+
+  deleteBuildInstance: (buildId) => {
+    set((state) => {
+      const { [buildId]: _removed, ...rest } = state.buildInstances;
+      return { buildInstances: rest };
+    });
+  },
+
+  getBuildInstance: (buildId) => {
+    return get().buildInstances[buildId];
+  },
+
+  isAnyBuilding: () => {
+    return Object.values(get().buildInstances).some(
+      (inst) => inst.status === "running",
+    );
+  },
+
+  getBuildInstancesForNode: (nodeId) => {
+    return Object.values(get().buildInstances).filter((inst) => {
+      if (inst.status !== "running" && inst.status !== "pending") return false;
+      const vertices = inst.verticesBuild?.verticesIds ?? [];
+      return vertices.includes(nodeId);
+    });
+  },
+
+  getBuildStatusForNode: (nodeId) => {
+    const instances = Object.values(get().buildInstances);
+    const statusPriority: Record<string, number> = {
+      BUILDING: 5,
+      ERROR: 4,
+      TO_BUILD: 3,
+      BUILT: 2,
+      INACTIVE: 1,
+      PENDING: 0,
+    };
+    let highestStatus: BuildStatus | undefined;
+    let highestPriority = -1;
+    for (const inst of instances) {
+      const entry = inst.flowBuildStatus[nodeId];
+      if (entry && (statusPriority[entry.status] ?? 0) > highestPriority) {
+        highestPriority = statusPriority[entry.status] ?? 0;
+        highestStatus = entry.status;
+      }
+    }
+    return highestStatus;
+  },
+
+  abortBuildInstance: (buildId) => {
+    const inst = get().buildInstances[buildId];
+    if (!inst) return;
+    inst.abortController.abort();
+    get().updateBuildInstance(buildId, { status: "cancelled" });
+  },
+
+  processBuildQueue: async () => {
+    const pendingList = Object.values(get().buildInstances).filter(
+      (inst) => inst.status === "pending",
+    );
+    if (pendingList.length === 0) return;
+
+    const runningList = Object.values(get().buildInstances).filter(
+      (inst) => inst.status === "running",
+    );
+
+    // Find the first pending build that doesn't conflict with running builds
+    for (const candidate of pendingList) {
+      const candidateVertices = new Set(candidate.verticesBuild?.verticesIds ?? []);
+      const conflicts = runningList.some((running) => {
+        const runningVertices = new Set(running.verticesBuild?.verticesIds ?? []);
+        return [...candidateVertices].some((v) => runningVertices.has(v));
+      });
+      if (!conflicts) {
+        get().updateBuildInstance(candidate.buildId, { status: "running" });
+        // Run the build via buildFlow
+        await get().buildFlow({
+          startNodeId: candidate.startNodeId,
+          stopNodeId: candidate.stopNodeId,
+          input_value: candidate.input_value,
+          files: candidate.files,
+          silent: candidate.silent,
+          session: candidate.session,
+          stream: candidate.stream,
+        });
+        break;
+      }
+    }
+  },
+  // ─── End multi-build instance API ────────────────────────────────────
   setFlowState: (flowState) => {
     const newFlowState =
       typeof flowState === "function" ? flowState(get().flowState) : flowState;
@@ -798,6 +927,7 @@ const useFlowStore = create<FlowStoreType>((set, get) => ({
   },
   pastBuildFlowParams: null,
   buildQueue: [],
+  buildInstances: {},
   buildInfo: null,
   setBuildInfo: (buildInfo: { error?: string[]; success?: boolean } | null) => {
     set({ buildInfo });
@@ -836,7 +966,46 @@ const useFlowStore = create<FlowStoreType>((set, get) => ({
     });
     const playgroundPage = get().playgroundPage;
     get().setIsBuilding(true);
-    set({ flowBuildStatus: {}, latestRunningText: {} });
+    // Only reset global state if this is the first/only running build
+    const hasOtherRunning = Object.values(get().buildInstances).some(
+      (inst) => inst.status === "running"
+    );
+    if (!hasOtherRunning) {
+      set({ flowBuildStatus: {}, latestRunningText: {} });
+    }
+    // Create a build instance for multi-build tracking
+    const buildId = crypto.randomUUID();
+    const buildInstance = get().createBuildInstance({
+      startNodeId,
+      stopNodeId,
+      input_value,
+      files,
+      silent,
+      session,
+      stream,
+    });
+    get().updateBuildInstance(buildId, { status: "running" });
+    
+    // Check if this build conflicts with existing running builds
+    const _allRunning = Object.values(get().buildInstances).filter(
+      (inst) => inst.buildId !== buildId && inst.status === "running"
+    );
+    const _inst = get().buildInstances[buildId];
+    const _myStop = _inst?.stopNodeId;
+    const _hasConflict = _allRunning.some((other) => {
+      // Same stop node = always conflict
+      if (_myStop && other.stopNodeId === _myStop) return true;
+      // Check vertex overlap if both have verticesBuild populated
+      const otherVertices = other.verticesBuild?.verticesIds ?? [];
+      // If we have upstream info (from stopNodeId), check if any upstream overlaps
+      return false;
+    });
+    if (_hasConflict) {
+      get().updateBuildInstance(buildId, { status: "pending" });
+      get().setIsBuilding(false);
+      // Will be picked up by processBuildQueue when a slot opens
+      return;
+    }
     const currentFlow = useFlowsManagerStore.getState().currentFlow;
     const setErrorData = useAlertStore.getState().setErrorData;
 
@@ -951,6 +1120,69 @@ const useFlowStore = create<FlowStoreType>((set, get) => ({
       status: BuildStatus,
       runId: string,
     ) {
+      // Also update the build instance for multi-build tracking
+      const bi = get().buildInstances[buildId];
+      if (bi) {
+        // Build instance: update verticesBuild
+        if (vertexBuildData.next_vertices_ids) {
+          const nextIds = vertexBuildData.next_vertices_ids.filter(
+            (id) => !vertexBuildData.inactivated_vertices?.includes(id),
+          );
+          const topLevel = vertexBuildData.top_level_vertices.filter(
+            (v) => !vertexBuildData.inactivated_vertices?.includes(v),
+          );
+          const prevVB = bi.verticesBuild;
+          if (prevVB) {
+            const newIds = [...prevVB.verticesIds, ...nextIds];
+            const newLayer = nextIds.map((id) => ({ id, reference: topLevel.find((t) => t === id) || id }));
+            get().updateBuildInstance(buildId, {
+              verticesBuild: {
+                ...prevVB,
+                verticesIds: newIds,
+                verticesLayers: [...prevVB.verticesLayers, newLayer],
+              },
+              flowBuildStatus: {
+                ...bi.flowBuildStatus,
+                ...Object.fromEntries(nextIds.map((id) => [id, { status: BuildStatus.TO_BUILD }])),
+              },
+            });
+          } else {
+            // First batch — no prior verticesBuild
+            get().updateBuildInstance(buildId, {
+              verticesBuild: {
+                verticesIds: nextIds,
+                verticesLayers: [nextIds.map((id) => ({ id, reference: id }))],
+                verticesToRun: nextIds,
+              },
+              flowBuildStatus: {
+                ...bi.flowBuildStatus,
+                ...Object.fromEntries(nextIds.map((id) => [id, { status: BuildStatus.TO_BUILD }])),
+              },
+            });
+          }
+        }
+        // Build instance: update flowPool
+        if (vertexBuildData.id) {
+          get().updateBuildInstance(buildId, {
+            flowPool: {
+              ...bi.flowPool,
+              [vertexBuildData.id]: [
+                ...(bi.flowPool[vertexBuildData.id] || []),
+                { ...vertexBuildData, run_id: runId },
+              ],
+            },
+          });
+        }
+        // Build instance: update status for this vertex
+        if (status !== BuildStatus.ERROR && vertexBuildData.id) {
+          get().updateBuildInstance(buildId, {
+            flowBuildStatus: {
+              ...bi.flowBuildStatus,
+              [vertexBuildData.id]: { status },
+            },
+          });
+        }
+      }
       if (vertexBuildData && vertexBuildData.inactivated_vertices) {
         get().removeFromVerticesBuild(vertexBuildData.inactivated_vertices);
         if (vertexBuildData.inactivated_vertices.length > 0) {
@@ -1068,6 +1300,16 @@ const useFlowStore = create<FlowStoreType>((set, get) => ({
             false,
           );
           get().setIsBuilding(false);
+          // Mark build instance as completed
+          get().updateBuildInstance(buildId, { status: "completed" });
+          // Clean up old build instances (keep last 20)
+          const allIds = Object.keys(get().buildInstances);
+          if (allIds.length > 20) {
+            const toRemove = allIds.sort().slice(0, allIds.length - 20);
+            for (const id of toRemove) {
+              get().deleteBuildInstance(id);
+            }
+          }
           // Invalidate KB-related caches so any KnowledgeIngestion node
           // that ran inside this build surfaces its updated stats / runs
           // the next time the user opens the assets/knowledge-bases tab.
@@ -1089,6 +1331,8 @@ const useFlowStore = create<FlowStoreType>((set, get) => ({
               ?.map((element) => element.id)
               .filter(Boolean) as string[]) ?? get().nodes.map((n) => n.id);
           useFlowStore.getState().updateBuildStatus(idList, BuildStatus.ERROR);
+          // Mark build instance as errored
+          get().updateBuildInstance(buildId, { status: "error" });
           const isCustomComponentBlocked = list.some((msg) =>
             msg.toLowerCase().includes("custom components are not allowed"),
           );
@@ -1148,6 +1392,11 @@ const useFlowStore = create<FlowStoreType>((set, get) => ({
       console.error("Build error:", _buildErr);
     }
     get().setIsBuilding(false);
+    // Mark build instance as completed if it was running
+    const biStatus = get().buildInstances[buildId]?.status;
+    if (biStatus === "running") {
+      get().updateBuildInstance(buildId, { status: "completed" });
+    }
     // Process next queued build if any
     await get().processNextBuildQueue();
     // Only revert build status if no next build started

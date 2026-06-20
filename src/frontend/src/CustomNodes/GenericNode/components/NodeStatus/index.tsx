@@ -101,6 +101,7 @@ export default function NodeStatus({
   const iconStatus = useIconStatus(buildStatus);
   const buildFlow = useFlowStore((state) => state.buildFlow);
   const isBuilding = useFlowStore((state) => state.isBuilding);
+  const isAnyBuilding = useFlowStore((state) => state.isAnyBuilding);
   const setNode = useFlowStore((state) => state.setNode);
   const version = useDarkStore((state) => state.version);
   const eventDeliveryConfig = useUtilityStore((state) => state.eventDelivery);
@@ -108,6 +109,7 @@ export default function NodeStatus({
   const setFlowPool = useFlowStore((state) => state.setFlowPool);
   const edges = useFlowStore((state) => state.edges);
   const flowBuildStatus = useFlowStore((state) => state.flowBuildStatus);
+  const abortBuildInstance = useFlowStore((state) => state.abortBuildInstance);
 
   const postTemplateValue = usePostTemplateValue({
     parameterId: nodeAuth?.name ?? "auth",
@@ -213,7 +215,8 @@ export default function NodeStatus({
   };
 
   function handlePlayWShortcut() {
-    if (buildStatus === BuildStatus.BUILDING || isBuilding || !selected) return;
+    // Allow starting a build even if other builds are running (multi-build support)
+    if (buildStatus === BuildStatus.BUILDING || !selected) return;
     setValidationStatus(null);
     buildFlow({
       stopNodeId: nodeId,
@@ -307,11 +310,15 @@ export default function NodeStatus({
     delete pool[nodeId];
     setFlowPool(pool);
 
-    if (BuildStatus.BUILDING === buildStatus && isHovered) {
-      stopBuilding();
-      return;
+    if (buildStatus === BuildStatus.BUILDING) {
+      if (isHovered) {
+        // Stop only builds that include this node
+        stopBuilding();
+        return;
+      }
+      return; // still building this node
     }
-    if (buildStatus === BuildStatus.BUILDING || isBuilding) return;
+    // Don't block based on global isBuilding — let the build instance system manage conflicts
 
     // Check if there are built upstream nodes to offer run mode selection
     const nearestUpstream = findNearestBuiltUpstream(
