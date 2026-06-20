@@ -266,6 +266,9 @@ export type FlowStoreType = {
   /** Abort (cancel) a specific build instance. */
   abortBuildInstance: (buildId: string) => void;
 
+  /** Stop all build instances that include the given node. */
+  stopBuildingForNode: (nodeId: string) => void;
+
   /** Process the build queue: pick the next non-conflicting pending build and run it. */
   processBuildQueue: () => Promise<void>;
   // ─── End multi-build instance API ──────────────────────────────────────
@@ -410,6 +413,8 @@ export type FlowStoreType = {
   setCurrentBuildingNodeId: (nodeIds: string[] | undefined) => void;
   clearEdgesRunningByNodes: () => Promise<void>;
   clearAndSetEdgesRunning: (nextIds?: string[]) => void;
+  /** Recompute edge animation state from all running build instances. */
+  computeEdgeRunningFromBuilds: () => void;
   updateToolMode: (nodeId: string, toolMode: boolean) => void;
   helperLineEnabled: boolean;
   setHelperLineEnabled: (helperLineEnabled: boolean) => void;

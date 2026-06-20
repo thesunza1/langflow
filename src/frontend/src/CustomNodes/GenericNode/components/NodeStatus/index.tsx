@@ -303,6 +303,7 @@ export default function NodeStatus({
   const [isHovered, setIsHovered] = useState(false);
 
   const stopBuilding = useFlowStore((state) => state.stopBuilding);
+  const stopBuildingForNode = useFlowStore((state) => state.stopBuildingForNode);
 
   const handleClickRun = () => {
     // Only clear this node's output, preserve other nodes' outputs
@@ -313,7 +314,7 @@ export default function NodeStatus({
     if (buildStatus === BuildStatus.BUILDING) {
       if (isHovered) {
         // Stop only builds that include this node
-        stopBuilding();
+        stopBuildingForNode(nodeId);
         return;
       }
       return; // still building this node

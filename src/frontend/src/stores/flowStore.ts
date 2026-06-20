@@ -493,6 +493,23 @@ const useFlowStore = create<FlowStoreType>((set, get) => ({
     get().updateBuildInstance(buildId, { status: "cancelled" });
   },
 
+  stopBuildingForNode: (nodeId) => {
+    // Find all build instances that include this node and abort them
+    const relevantBuilds = Object.entries(get().buildInstances).filter(
+      ([_, inst]) =>
+        (inst.status === "running" || inst.status === "pending") &&
+        (inst.stopNodeId === nodeId ||
+          inst.verticesBuild?.verticesIds?.includes(nodeId)),
+    );
+    for (const [buildId, _] of relevantBuilds) {
+      get().abortBuildInstance(buildId);
+    }
+    // If no specific build found for this node, fall back to stopping all
+    if (relevantBuilds.length === 0) {
+      get().stopBuilding();
+    }
+  },
+
   processBuildQueue: async () => {
     const pendingList = Object.values(get().buildInstances).filter(
       (inst) => inst.status === "pending",
@@ -1302,6 +1319,8 @@ const useFlowStore = create<FlowStoreType>((set, get) => ({
           get().setIsBuilding(false);
           // Mark build instance as completed
           get().updateBuildInstance(buildId, { status: "completed" });
+          // Recompute edge running state from remaining builds
+          get().computeEdgeRunningFromBuilds();
           // Clean up old build instances (keep last 20)
           const allIds = Object.keys(get().buildInstances);
           if (allIds.length > 20) {
@@ -1412,20 +1431,30 @@ const useFlowStore = create<FlowStoreType>((set, get) => ({
     };
   },
   updateEdgesRunningByNodes: (ids: string[], running: boolean) => {
+    // When setting edges to non-running (running=false), check if other builds
+    // still need these edges animated. If running=true, animate them.
     const edges = get().edges;
 
     const newEdges = edges.map((edge) => {
-      if (
-        edge.data?.sourceHandle &&
-        ids.includes(edge.data.sourceHandle.id ?? "") &&
-        edge.data.sourceHandle.id !== get().stopNodeId
-      ) {
-        edge.animated = running;
-        edge.className = running ? "running" : "";
-      } else {
-        edge.animated = false;
-        edge.className = "not-running";
+      const sourceId = edge.data?.sourceHandle?.id ?? "";
+      if (running && ids.includes(sourceId) && sourceId !== get().stopNodeId) {
+        return { ...edge, animated: true, className: "running" };
       }
+      if (!running) {
+        // Check if any other running build instance needs this edge animated
+        const otherRunning = Object.values(get().buildInstances).filter(
+          (inst) => inst.status === "running",
+        );
+        const stillNeeded = otherRunning.some((inst) => {
+          const vIds = inst.verticesBuild?.verticesIds ?? [];
+          return vIds.includes(sourceId) || inst.stopNodeId === sourceId;
+        });
+        if (stillNeeded) {
+          return { ...edge, animated: true, className: "running" };
+        }
+      }
+      edge.animated = false;
+      edge.className = "not-running";
       return edge;
     });
     set({ edges: newEdges });
@@ -1442,14 +1471,55 @@ const useFlowStore = create<FlowStoreType>((set, get) => ({
       resolve();
     });
   },
+  /** Compute which edges should be running based on all active build instances. */
+  computeEdgeRunningFromBuilds: () => {
+    const edges = get().edges;
+    const runningInstances = Object.values(get().buildInstances).filter(
+      (inst) => inst.status === "running",
+    );
+    // Collect all vertex IDs that are currently being built or queued across all running builds
+    const activeVertexIds = new Set<string>();
+    for (const inst of runningInstances) {
+      const stopId = inst.stopNodeId;
+      if (stopId) activeVertexIds.add(stopId);
+      for (const vid of inst.verticesBuild?.verticesIds ?? []) {
+        activeVertexIds.add(vid);
+      }
+    }
+
+    const newEdges = edges.map((edge) => {
+      const sourceId = edge.data?.sourceHandle?.id ?? "";
+      if (activeVertexIds.has(sourceId) && sourceId !== get().stopNodeId) {
+        return { ...edge, animated: true, className: "running" };
+      }
+      return { ...edge, animated: false, className: "" };
+    });
+    set({ edges: newEdges });
+  },
+
   clearAndSetEdgesRunning: (nextIds?: string[]) => {
+    // Merge with existing running builds: if nextIds is provided, add to active set;
+    // always consider currently running build instances.
     const edges = get().edges;
     const stopNodeId = get().stopNodeId;
     const nextIdSet = nextIds ? new Set(nextIds) : null;
 
+    // Also collect vertex IDs from other running build instances
+    const runningInstances = Object.values(get().buildInstances).filter(
+      (inst) => inst.status === "running",
+    );
+    const otherActiveIds = new Set<string>();
+    for (const inst of runningInstances) {
+      for (const vid of inst.verticesBuild?.verticesIds ?? []) {
+        otherActiveIds.add(vid);
+      }
+    }
+
     const newEdges = edges.map((edge) => {
       const sourceId = edge.data?.sourceHandle?.id ?? "";
-      if (nextIdSet && nextIdSet.has(sourceId) && sourceId !== stopNodeId) {
+      const isActiveByCurrentBuild = nextIdSet && nextIdSet.has(sourceId) && sourceId !== stopNodeId;
+      const isActiveByOtherBuild = otherActiveIds.has(sourceId);
+      if (isActiveByCurrentBuild || isActiveByOtherBuild) {
         return { ...edge, animated: true, className: "running" };
       }
       return { ...edge, animated: false, className: "" };
