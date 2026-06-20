@@ -29,6 +29,7 @@ from langflow.api.v1.schemas import (
     VertexBuildResponse,
 )
 from langflow.events.event_manager import EventManager
+from lfx.services.cache.utils import CacheMiss
 from langflow.exceptions.component import ComponentBuildError
 from langflow.schema.message import ErrorMessage
 from langflow.schema.schema import OutputValue
@@ -708,6 +709,36 @@ async def generate_flow_events(
     cleanup_tasks: set[asyncio.Task] = set()
 
     async def _run_vertex_build() -> None:
+        # For incremental builds (start == stop), pre-load predecessors from
+        # the previous run's cache so the target vertex can resolve their outputs.
+        if start_component_id is not None and start_component_id == stop_component_id:
+            # Pre-load predecessors using graph.build_vertex with cache from last run_id
+            last_run_id_cache = await chat_service.get_cache(f"{flow_id}:last_run_id")
+            if not isinstance(last_run_id_cache, CacheMiss) and last_run_id_cache:
+                # chat_service.set_cache wraps as {"result": data, "type": type}
+                # unwrap to get the raw last_run_id string
+                lri_raw = last_run_id_cache.get("result") if isinstance(last_run_id_cache, dict) else last_run_id_cache
+                lri = lri_raw if isinstance(lri_raw, str) else str(lri_raw)
+
+                async def _pred_cache(key: str, lock=None):
+                    result = await chat_service.get_cache(f"{lri}:{key}", lock=lock)
+                    import sys as _sys
+                    _sys.stderr.write(f"DEBUG_CACHE: key={lri}:{key} found={not isinstance(result, CacheMiss)}\n")
+                    _sys.stderr.flush()
+                    return result
+
+                for target_id in ids:
+                    target_v = graph.get_vertex(target_id)
+                    for pred_v in target_v.predecessors:
+                        try:
+                            await graph.build_vertex(
+                                pred_v.id,
+                                get_cache=_pred_cache,
+                                set_cache=chat_service.set_cache,
+                            )
+                        except Exception:
+                            await logger.adebug("Pre-load failed for %s", pred_v.id, exc_info=True)
+
         tasks = []
         for vertex_id in ids:
             task = asyncio.create_task(build_vertices(vertex_id, graph, event_manager, vertex_timedeltas))
@@ -743,6 +774,14 @@ async def generate_flow_events(
     build_duration = sum(vertex_timedeltas)
     event_manager.on_end(data={"build_duration": build_duration})
     await graph.end_all_traces()
+
+    # Store the last successful run_id so incremental builds (start == stop)
+    # can look up predecessor results from the previous cache namespace.
+    if graph.run_id and not (start_component_id is not None and start_component_id == stop_component_id):
+        try:
+            await chat_service.set_cache(f"{flow_id}:last_run_id", graph.run_id)
+        except Exception:
+            await logger.adebug("Failed to cache last_run_id for flow %s", flow_id)
 
     # Fire memory-base auto-capture hook — non-blocking background effect.
     # Must use fire_and_forget_task (not background_tasks.add_task) because

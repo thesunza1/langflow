@@ -1664,6 +1664,8 @@ class Graph:
                     if not isinstance(cached_result, CacheMiss):
                         try:
                             cached_vertex_dict = cached_result["result"]
+                            if "result" in cached_vertex_dict and "built" not in cached_vertex_dict:
+                                cached_vertex_dict = cached_vertex_dict["result"]
                             vertex.built = cached_vertex_dict["built"]
                             vertex.artifacts = cached_vertex_dict["artifacts"]
                             vertex.built_object = cached_vertex_dict["built_object"]
@@ -1693,6 +1695,8 @@ class Graph:
                 else:
                     try:
                         cached_vertex_dict = cached_result["result"]
+                        if "result" in cached_vertex_dict and "built" not in cached_vertex_dict:
+                            cached_vertex_dict = cached_vertex_dict["result"]
                         # Now set update the vertex with the cached vertex
                         vertex.built = cached_vertex_dict["built"]
                         vertex.artifacts = cached_vertex_dict["artifacts"]

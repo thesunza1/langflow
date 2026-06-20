@@ -956,19 +956,34 @@ def get_sorted_vertices(
             get_vertex_successors=get_vertex_successors,
             graph_dict=graph_dict,
         )
-        # Then get all vertices that can reach any reachable vertex
-        connected_vertices = set()
-        for vertex in reachable_vertices:
-            connected_vertices.update(
-                filter_vertices_up_to_vertex(
-                    vertices_ids,
-                    vertex,
-                    get_vertex_predecessors=get_vertex_predecessors,
-                    get_vertex_successors=get_vertex_successors,
-                    graph_dict=graph_dict,
+        # When start == stop ("Run and stop here (use existing)"),
+        # only build that single vertex — don't expand back to predecessors.
+        if start_component_id == stop_component_id:
+            vertices_ids = list(reachable_vertices)
+        else:
+            # Then get all vertices that can reach any reachable vertex
+            connected_vertices = set()
+            for vertex in reachable_vertices:
+                connected_vertices.update(
+                    filter_vertices_up_to_vertex(
+                        vertices_ids,
+                        vertex,
+                        get_vertex_predecessors=get_vertex_predecessors,
+                        get_vertex_successors=get_vertex_successors,
+                        graph_dict=graph_dict,
+                    )
                 )
-            )
-        vertices_ids = list(connected_vertices)
+            vertices_ids = list(connected_vertices)
+
+    # Recalculate in_degree_map based on filtered vertices_ids.
+    # When vertices are filtered out (e.g. start==stop incremental build),
+    # predecessors outside vertices_ids should not contribute to in_degree.
+    filtered_set = set(vertices_ids)
+    in_degree_map = {}
+    successor_map = {v: [s for s in successor_map.get(v, []) if s in filtered_set] for v in vertices_ids}
+    for vid in vertices_ids:
+        preds = [p for p in predecessor_map.get(vid, []) if p in filtered_set]
+        in_degree_map[vid] = len(preds)
 
     # Get the layers
     layers = layered_topological_sort(
